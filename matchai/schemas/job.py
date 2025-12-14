@@ -1,4 +1,16 @@
+from dataclasses import dataclass
+
 from pydantic import BaseModel, Field
+
+
+@dataclass
+class Company:
+    """Company credentials for fetching job listings from external APIs."""
+
+    name: str
+    uid: str
+    token: str
+    extracted_from: str
 
 
 class JobDetail(BaseModel):
@@ -47,9 +59,3 @@ class Job(BaseModel):
     details: list[JobDetail] = Field(default=[], description="Job description sections")
 
 
-class Company(BaseModel):
-    """Company credentials for fetching job listings from external APIs."""
-
-    uid: str = Field(description="Unique identifier for the company")
-    token: str = Field(description="API token used to fetch jobs from the company's career page")
-    extracted_from: str = Field(description="URL or source from which to fetch job listings")

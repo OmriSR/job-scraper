@@ -73,10 +73,12 @@ class TestJob:
 class TestCompany:
     def test_valid_company(self):
         company = Company(
+            name="Test Corp",
             uid="comp-123",
             token="secret-token",
             extracted_from="https://careers.example.com",
         )
+        assert company.name == "Test Corp"
         assert company.uid == "comp-123"
         assert company.token == "secret-token"
 

@@ -1,9 +1,6 @@
 """Tests for job embeddings and ChromaDB storage."""
 
-from unittest.mock import patch
-
 import numpy as np
-import pytest
 
 from matchai.jobs.embeddings import (
     embed_and_store_jobs,
@@ -14,19 +11,6 @@ from matchai.jobs.embeddings import (
 )
 from matchai.schemas.candidate import CandidateProfile
 from matchai.schemas.job import Job, JobDetail
-
-
-@pytest.fixture
-def temp_chroma(tmp_path):
-    """Create a temporary ChromaDB for testing."""
-    chroma_path = tmp_path / "chroma_db"
-    data_dir = tmp_path
-
-    with patch("matchai.jobs.embeddings.CHROMA_PATH", chroma_path), \
-         patch("matchai.jobs.embeddings.DATA_DIR", data_dir), \
-         patch("matchai.jobs.embeddings._collection", None), \
-         patch("matchai.jobs.embeddings._chroma_client", None):
-        yield chroma_path
 
 
 class TestEmbedText:

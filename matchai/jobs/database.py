@@ -46,6 +46,7 @@ def init_database() -> None:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS companies (
                 uid TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
                 token TEXT NOT NULL,
                 extracted_from TEXT NOT NULL
             )
@@ -54,7 +55,7 @@ def init_database() -> None:
         conn.commit()
 
 
-def insert_jobs(jobs: list[Job]) -> int:
+def insert_jobs_to_db(jobs: list[Job]) -> int:
     """Insert jobs into the database.
 
     Args:
@@ -122,8 +123,8 @@ def insert_companies(companies: list[Company]) -> int:
         for company in companies:
             try:
                 cursor.execute(
-                    "INSERT INTO companies (uid, token, extracted_from) VALUES (?, ?, ?)",
-                    (company.uid, company.token, company.extracted_from),
+                    "INSERT INTO companies (uid, name, token, extracted_from) VALUES (?, ?, ?, ?)",
+                    (company.uid, company.name, company.token, company.extracted_from),
                 )
                 inserted += 1
             except sqlite3.IntegrityError:
@@ -176,6 +177,25 @@ def get_existing_job_uids() -> set[str]:
         rows = cursor.fetchall()
 
     return {row[0] for row in rows}
+
+
+def get_all_companies() -> list[Company]:
+    """Retrieve all companies from the database."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM companies")
+        rows = cursor.fetchall()
+
+    return [
+        Company(
+            name=row["name"],
+            uid=row["uid"],
+            token=row["token"],
+            extracted_from=row["extracted_from"],
+        )
+        for row in rows
+    ]
 
 
 def _row_to_job(row: sqlite3.Row) -> Job:

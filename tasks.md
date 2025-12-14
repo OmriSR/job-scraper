@@ -42,12 +42,13 @@
 - [x] 4.3.8 Implement `embed_candidate()`
 
 ## Phase 5: Ingestion Pipeline
-- [ ] 5.1 Create ingestion function in `jobs/database.py` or separate module
-- [ ] 5.2 Load and validate JSON with Pydantic
-- [ ] 5.3 Check existing uids (idempotency)
-- [ ] 5.4 Insert new jobs only
-- [ ] 5.5 Preprocess and embed new jobs
-- [ ] 5.6 Log ingestion stats
+- [x] 5.1 Create ingestion function in `jobs/ingest.py`
+- [x] 5.2 Load and validate JSON with Pydantic
+- [x] 5.3 Check existing uids (idempotency)
+- [x] 5.4 Insert new jobs only
+- [x] 5.5 Preprocess and embed new jobs
+- [x] 5.6 Log ingestion stats
+- [x] 5.7 Write tests for ingestion pipeline
 
 ## Phase 6.1: Deterministic Filters
 - [ ] 6.1.1 Create `matching/filter.py`
