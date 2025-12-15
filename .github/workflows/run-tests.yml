@@ -1,0 +1,52 @@
+name: Run Tests
+
+on:
+  # Run on every Pull Request targeting main or master
+  pull_request:
+    branches: [main, master]
+  # Run on every direct Push to main or master
+  push:
+    branches: [main, master]
+
+jobs:
+  test:
+    # The Operating System the runner will use
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. CHECKOUT CODE
+      # This step clones the repository into the runner so the script can access your files.
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. SETUP PYTHON & CACHING
+      # Installs Python 3.11.
+      # The 'cache: pip' line tells GitHub to automatically save and restore
+      # your pip downloads to speed up future runs.
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # 3. INSTALL DEPENDENCIES
+      # Upgrades pip to the latest version.
+      # Installs your project in "editable" mode (-e) along with dependencies.
+      # The ".[dev]" part tells pip to look in pyproject.toml for a list of
+      # optional dependencies labeled "dev" (like pytest, black, flake8).
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      # 4. DOWNLOAD SPACY MODEL
+      # Downloads the small English model required for NLP tasks.
+      # We download this fresh every time because it is small (12MB) and fast.
+      - name: Download spaCy model
+        run: python -m spacy download en_core_web_sm
+
+      # 5. EXECUTE TESTS
+      # Runs pytest with "verbose" mode (-v) to show individual test results.
+      # If any test fails, this step fails, and the Pull Request gets a Red X.
+      - name: Run tests
+        run: pytest -v
