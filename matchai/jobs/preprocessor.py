@@ -9,10 +9,10 @@ _nlp = None
 
 
 def _get_nlp():
-    """Lazy load spaCy model."""
+    """Lazy load spaCy model with tokenizer, tagger, and lemmatizer only."""
     global _nlp
     if _nlp is None:
-        _nlp = spacy.load(SPACY_MODEL)
+        _nlp = spacy.load(SPACY_MODEL, disable=["parser", "ner"])
     return _nlp
 
 
@@ -89,6 +89,19 @@ def preprocess_job(job: Job) -> str:
     return " ".join(tokens)
 
 
+def _extract_keywords_from_doc(doc) -> list[str]:
+    """Extract keywords from a spaCy Doc."""
+    keywords = set()
+    for token in doc:
+        if (
+            token.pos_ in ("NOUN", "PROPN", "ADJ")
+            and not token.is_stop
+            and len(token.text) > 2
+        ):  # TODO: the last term will miss "Go" as a skill
+            keywords.add(token.lemma_.lower())
+    return list(keywords)
+
+
 def extract_job_keywords(job: Job) -> list[str]:
     """Extract keywords from job details.
 
@@ -99,20 +112,33 @@ def extract_job_keywords(job: Job) -> list[str]:
         List of unique keywords (nouns, proper nouns, adjectives).
     """
     raw_text = extract_details_text(job.details)
-
     if not raw_text:
         return []
 
     nlp = _get_nlp()
     doc = nlp(raw_text)
+    return _extract_keywords_from_doc(doc)
 
-    keywords = set()
-    for token in doc:
-        if (
-            token.pos_ in ("NOUN", "PROPN", "ADJ")
-            and not token.is_stop
-            and len(token.text) > 2
-        ):  # TODO: the last term will miss "Go" as a skill
-            keywords.add(token.lemma_.lower())
 
-    return list(keywords)
+def extract_job_keywords_batch(jobs: list[Job]) -> list[list[str]]:
+    """Extract keywords from multiple jobs using batch processing.
+
+    Args:
+        jobs: List of Job objects to extract keywords from.
+
+    Returns:
+        List of keyword lists, one per job (in same order as input).
+    """
+    texts = [extract_details_text(job.details) for job in jobs]
+    results: list[list[str]] = [[] for _ in jobs]
+
+    non_empty_indices = [i for i, text in enumerate(texts) if text]
+    non_empty_texts = [texts[i] for i in non_empty_indices]
+
+    nlp = _get_nlp()
+    docs = nlp.pipe(non_empty_texts)
+
+    for i, doc in zip(non_empty_indices, docs):
+        results[i] = _extract_keywords_from_doc(doc)
+
+    return results
