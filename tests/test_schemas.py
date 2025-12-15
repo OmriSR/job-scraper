@@ -3,9 +3,32 @@
 import pytest
 from pydantic import ValidationError
 
-from matchai.schemas.candidate import CandidateProfile
+from matchai.schemas.candidate import CandidateProfile, SeniorityLevel
 from matchai.schemas.job import Company, Job, JobDetail
 from matchai.schemas.match import MatchResult
+
+
+class TestSeniorityLevel:
+    def test_case_insensitive_lookup(self):
+        assert SeniorityLevel("senior") == SeniorityLevel.SENIOR
+        assert SeniorityLevel("SENIOR") == SeniorityLevel.SENIOR
+        assert SeniorityLevel("Senior") == SeniorityLevel.SENIOR
+
+    def test_all_levels(self):
+        assert SeniorityLevel("junior") == SeniorityLevel.JUNIOR
+        assert SeniorityLevel("mid") == SeniorityLevel.MID
+        assert SeniorityLevel("lead") == SeniorityLevel.LEAD
+        assert SeniorityLevel("principal") == SeniorityLevel.PRINCIPAL
+        assert SeniorityLevel("staff") == SeniorityLevel.STAFF
+
+    def test_invalid_level_raises(self):
+        with pytest.raises(ValueError):
+            SeniorityLevel("invalid")
+
+    def test_comparison(self):
+        assert SeniorityLevel.JUNIOR < SeniorityLevel.MID
+        assert SeniorityLevel.SENIOR < SeniorityLevel.LEAD
+        assert SeniorityLevel.LEAD < SeniorityLevel.PRINCIPAL
 
 
 class TestCandidateProfile:
@@ -20,7 +43,29 @@ class TestCandidateProfile:
             raw_text="Sample CV text",
         )
         assert profile.skills == ["python", "sql"]
-        assert profile.seniority == "senior"
+        assert profile.seniority == SeniorityLevel.SENIOR
+
+    def test_seniority_case_insensitive(self):
+        profile = CandidateProfile(
+            skills=[],
+            tools_frameworks=[],
+            seniority="SENIOR",
+            domains=[],
+            keywords=[],
+            raw_text="",
+        )
+        assert profile.seniority == SeniorityLevel.SENIOR
+
+    def test_invalid_seniority_raises(self):
+        with pytest.raises(ValidationError):
+            CandidateProfile(
+                skills=[],
+                tools_frameworks=[],
+                seniority="invalid_level",
+                domains=[],
+                keywords=[],
+                raw_text="",
+            )
 
     def test_optional_years_experience(self):
         profile = CandidateProfile(

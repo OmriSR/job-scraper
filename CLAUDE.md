@@ -87,3 +87,4 @@ pytest --cov=matchai      # With coverage
 5. Prefer deterministic methods over LLM-based ones
 6. LLM only for: CV parsing and explanation generation
 7. Write tests for each feature/module as it's implemented
+- write all consts values to config.py file
