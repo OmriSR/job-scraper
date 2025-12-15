@@ -80,7 +80,10 @@ def preprocess_job(job: Job) -> str:
     tokens = [
         token.lemma_
         for token in doc
-        if not token.is_stop and not token.is_punct and not token.is_space and token.is_alpha
+        if not token.is_stop
+        and not token.is_punct
+        and not token.is_space
+        and token.is_alpha
     ]
 
     return " ".join(tokens)
@@ -105,7 +108,11 @@ def extract_job_keywords(job: Job) -> list[str]:
 
     keywords = set()
     for token in doc:
-        if token.pos_ in ("NOUN", "PROPN", "ADJ") and not token.is_stop and len(token.text) > 2:
+        if (
+            token.pos_ in ("NOUN", "PROPN", "ADJ")
+            and not token.is_stop
+            and len(token.text) > 2
+        ):  # TODO: the last term will miss "Go" as a skill
             keywords.add(token.lemma_.lower())
 
     return list(keywords)
