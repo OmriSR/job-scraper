@@ -4,29 +4,88 @@ on:
   pull_request:
     types: [opened, synchronize]
 
+permissions:
+  contents: read
+  pull-requests: write # Required to post the comment
+
 jobs:
   review:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-
     steps:
+      # 1. Checkout with FULL history (Fixes the git diff error)
       - name: Checkout Repo
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  
+          fetch-depth: 0 
 
-      - name: Gemini Code Review
-        uses: sshnaidm/gemini-code-review-action@v1
+      # 2. Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          gemini-key: ${{ secrets.GEMINI_API_KEY }}
-          model: "gemini-pro"
-          prompt: |
-            You are a senior software engineer. Review this code diff.
-            Focus on:
-            1. Logic errors and potential bugs.
-            2. Security vulnerabilities.
-            3. Code efficiency.
-            4. Do NOT nitpick about formatting.
-            5. Be concise.
+          python-version: '3.11'
+
+      # 3. Install the Official Google GenAI Library
+      - name: Install Dependencies
+        run: pip install google-generativeai PyGithub
+
+      # 4. Run the Review Script
+      - name: Run Gemini Review
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO_NAME: ${{ github.repository }}
+        shell: python
+        run: |
+          import os
+          import google.generativeai as genai
+          from github import Github
+
+          # --- CONFIGURATION ---
+          genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+          g = Github(os.environ["GITHUB_TOKEN"])
+          repo = g.get_repo(os.environ["REPO_NAME"])
+          pr = repo.get_pull(int(os.environ["PR_NUMBER"]))
+          
+          # --- GET THE DIFF ---
+          # We gather the changes from the PR
+          diff_text = ""
+          for file in pr.get_files():
+              # Skip removed files or huge files to save tokens
+              if file.status == "removed" or file.patch is None:
+                  continue
+              diff_text += f"\n\nFile: {file.filename}\nDiff:\n{file.patch}\n"
+
+          if not diff_text:
+              print("No substantial changes to review.")
+              exit(0)
+
+          # --- SEND TO GEMINI ---
+          # We use 1.5-flash because it has a huge context window (1M tokens)
+          # so it can handle large PRs easily.
+          model = genai.GenerativeModel("gemini-1.5-flash")
+          
+          prompt = f"""
+          You are a senior developer. Review the following code changes (git diffs).
+          
+          Instructions:
+          1. Identify critical bugs, security flaws, or logic errors.
+          2. Suggest performance improvements if obvious.
+          3. Be concise. Do NOT comment on formatting (indentation, whitespace) unless it breaks code.
+          4. If the code looks good, just say "LGTM! (Looks Good To Me)".
+          
+          Code Changes:
+          {diff_text}
+          """
+
+          try:
+              response = model.generate_content(prompt)
+              review_content = response.text
+              
+              # --- POST COMMENT ---
+              pr.create_issue_comment(f"## 🤖 Gemini Code Review\n\n{review_content}")
+              print("Review posted successfully!")
+              
+          except Exception as e:
+              print(f"Error generating review: {e}")
+              exit(1)
