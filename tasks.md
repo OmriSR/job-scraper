@@ -16,6 +16,12 @@
 - [x] 3.1.2 Implement `extract_text_from_pdf()` using PyMuPDF
 - [x] 3.1.3 Handle multi-page PDFs and clean whitespace
 
+## Phase 3.2: LLM CV Parsing
+- [x] 3.2.1 Create `cv/parser.py`
+- [x] 3.2.2 Set up Ollama via LangChain
+- [x] 3.2.3 Create CV parsing prompt
+- [x] 3.2.4 Implement `parse_cv()` → CandidateProfile
+
 ## Phase 4.1: SQLite Database
 - [x] 4.1.1 Create `jobs/database.py`
 - [x] 4.1.2 Implement `init_database()` - create tables
@@ -62,12 +68,6 @@
 - [ ] 6.2.2 Implement `compute_similarity()` - cosine
 - [ ] 6.2.3 Implement `rank_jobs()`
 - [ ] 6.2.4 Implement `compute_final_score()`
-
-## Phase 3.2: LLM CV Parsing
-- [x] 3.2.1 Create `cv/parser.py`
-- [x] 3.2.2 Set up Ollama via LangChain
-- [x] 3.2.3 Create CV parsing prompt
-- [x] 3.2.4 Implement `parse_cv()` → CandidateProfile
 
 ## Phase 7: LLM Explanation
 - [x] 7.1 Create `explainer/generator.py`
