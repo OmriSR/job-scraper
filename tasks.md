@@ -64,15 +64,15 @@
 - [ ] 6.2.4 Implement `compute_final_score()`
 
 ## Phase 3.2: LLM CV Parsing
-- [ ] 3.2.1 Create `cv/parser.py`
-- [ ] 3.2.2 Set up Ollama via LangChain
-- [ ] 3.2.3 Create CV parsing prompt
-- [ ] 3.2.4 Implement `parse_cv()` → CandidateProfile
+- [x] 3.2.1 Create `cv/parser.py`
+- [x] 3.2.2 Set up Ollama via LangChain
+- [x] 3.2.3 Create CV parsing prompt
+- [x] 3.2.4 Implement `parse_cv()` → CandidateProfile
 
 ## Phase 7: LLM Explanation
-- [ ] 7.1 Create `explainer/generator.py`
-- [ ] 7.2 Create explanation prompt template
-- [ ] 7.3 Implement `generate_explanation()`
+- [x] 7.1 Create `explainer/generator.py`
+- [x] 7.2 Create explanation prompt template
+- [x] 7.3 Implement `generate_explanation()`
 - [ ] 7.4 Implement `find_missing_skills()` (deterministic)
 
 ## Phase 8: CLI
