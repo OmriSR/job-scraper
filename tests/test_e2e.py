@@ -44,6 +44,7 @@ from matchai.matching.filter import apply_filters
 from matchai.matching.ranker import rank_jobs
 from matchai.schemas.candidate import CandidateProfile, SeniorityLevel
 from matchai.schemas.job import Company, Job, JobDetail
+from matchai.utils import OllamaUnavailableError
 from tests.test_utils import make_test_candidate, make_test_job
 
 runner = CliRunner()
@@ -645,6 +646,24 @@ class TestCLICommands:
 
             assert result.exit_code == 1
             assert "database not found" in result.stdout.lower()
+
+    def test_match_command_ollama_unavailable(self, temp_db_and_chroma, tmp_path):
+        """Test match command when Ollama is not running."""
+        cv_path = create_sample_cv_pdf(tmp_path)
+
+        with patch("matchai.main.DB_PATH", temp_db_and_chroma["db_path"]), patch(
+            "matchai.main.check_ollama_available"
+        ) as mock_check:
+            mock_check.side_effect = OllamaUnavailableError(
+                "Cannot connect to Ollama at http://localhost:11434. "
+                "Please ensure Ollama is running with: ollama serve"
+            )
+
+            result = runner.invoke(app, ["match", "--cv", str(cv_path)])
+
+            assert result.exit_code == 1
+            assert "cannot connect to ollama" in result.stdout.lower()
+            assert "ollama serve" in result.stdout.lower()
 
 
 # =============================================================================

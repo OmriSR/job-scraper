@@ -6,6 +6,7 @@ DB_PATH = DATA_DIR / "matchai.db"
 CHROMA_PATH = DATA_DIR / "chroma_db"
 
 # LLM settings (Ollama)
+OLLAMA_BASE_URL = "http://localhost:11434"
 OLLAMA_MODEL = "llama3.2"
 OLLAMA_TEMPERATURE = 0.0
 

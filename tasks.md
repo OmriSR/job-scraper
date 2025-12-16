@@ -75,15 +75,16 @@
 - [x] 7.1 Create `explainer/generator.py`
 - [x] 7.2 Create explanation prompt template
 - [x] 7.3 Implement `generate_explanation()`
-- [ ] 7.4 Implement `find_missing_skills()` (deterministic)
+- [x] 7.4 Implement `find_missing_skills()` (deterministic)
 
 ## Phase 8: CLI
-- [ ] 8.1 Create `main.py` with typer
-- [ ] 8.2 Implement `ingest` command
-- [ ] 8.3 Implement `match` command
-- [ ] 8.4 Implement `info` command
-- [ ] 8.5 Implement pretty console output
-- [ ] 8.6 Implement JSON output option
+- [x] 8.1 Create `main.py` with typer
+- [x] 8.2 Implement `ingest` command
+- [x] 8.3 Implement `match` command
+- [x] 8.4 Implement `info` command
+- [x] 8.5 Implement pretty console output
+- [x] 8.6 Implement JSON output option
+- [x] 8.7 Add database-level filtering to avoid loading all jobs
 
 ## Phase 9: Testing
 - [ ] 9.1 Create sample test data (CV PDF, jobs JSON)
