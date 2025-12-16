@@ -57,17 +57,19 @@
 - [x] 5.7 Write tests for ingestion pipeline
 
 ## Phase 6.1: Deterministic Filters
-- [ ] 6.1.1 Create `matching/filter.py`
-- [ ] 6.1.2 Implement `filter_by_skills()` with RapidFuzz
-- [ ] 6.1.3 Implement `filter_by_seniority()`
-- [ ] 6.1.4 Implement `filter_by_location()`
-- [ ] 6.1.5 Implement `apply_filters()` - combine all
+- [x] 6.1.1 Create `matching/filter.py`
+- [x] 6.1.2 Implement `filter_by_skills()` with RapidFuzz
+- [x] 6.1.3 Implement `filter_by_seniority()` with SeniorityLevel enum
+- [x] 6.1.4 Implement `filter_by_location()`
+- [x] 6.1.5 Implement `apply_filters()` - combine all
+- [x] 6.1.6 Write tests for filters
 
 ## Phase 6.2: Semantic Ranking
-- [ ] 6.2.1 Create `matching/ranker.py`
-- [ ] 6.2.2 Implement `compute_similarity()` - cosine
-- [ ] 6.2.3 Implement `rank_jobs()`
-- [ ] 6.2.4 Implement `compute_final_score()`
+- [x] 6.2.1 Create `matching/ranker.py`
+- [x] 6.2.2 Implement `compute_similarities_batch()` - cosine (sklearn)
+- [x] 6.2.3 Implement `rank_jobs()`
+- [x] 6.2.4 Implement `compute_final_score()`
+- [x] 6.2.5 Write tests for ranker
 
 ## Phase 7: LLM Explanation
 - [x] 7.1 Create `explainer/generator.py`

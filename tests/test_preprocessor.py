@@ -5,6 +5,7 @@ import pytest
 from matchai.jobs.preprocessor import (
     extract_details_text,
     extract_job_keywords,
+    extract_job_keywords_batch,
     preprocess_job,
     strip_html,
 )
@@ -107,3 +108,61 @@ class TestExtractJobKeywords:
         job = Job(uid="test-4", name="Empty")
         keywords = extract_job_keywords(job)
         assert keywords == []
+
+
+class TestExtractJobKeywordsBatch:
+    def test_batch_matches_single_processing(self):
+        jobs = [
+            Job(
+                uid="batch-1",
+                name="Developer",
+                details=[
+                    JobDetail(name="Req", value="<p>Python experience</p>", order=1),
+                ],
+            ),
+            Job(
+                uid="batch-2",
+                name="Engineer",
+                details=[
+                    JobDetail(name="Req", value="<p>Cloud infrastructure</p>", order=1),
+                ],
+            ),
+        ]
+        batch_results = extract_job_keywords_batch(jobs)
+        single_results = [extract_job_keywords(job) for job in jobs]
+
+        assert len(batch_results) == len(single_results)
+        for batch_kw, single_kw in zip(batch_results, single_results):
+            assert set(batch_kw) == set(single_kw)
+
+    def test_handles_empty_jobs_in_batch(self):
+        jobs = [
+            Job(uid="batch-3", name="Empty"),
+            Job(
+                uid="batch-4",
+                name="Full",
+                details=[
+                    JobDetail(name="Req", value="<p>Python skills</p>", order=1),
+                ],
+            ),
+            Job(uid="batch-5", name="Empty"),
+        ]
+        results = extract_job_keywords_batch(jobs)
+
+        assert len(results) == 3
+        assert results[0] == []
+        assert len(results[1]) > 0
+        assert results[2] == []
+
+    def test_all_empty_jobs(self):
+        jobs = [
+            Job(uid="empty-1", name="Empty1"),
+            Job(uid="empty-2", name="Empty2"),
+        ]
+        results = extract_job_keywords_batch(jobs)
+
+        assert results == [[], []]
+
+    def test_empty_list(self):
+        results = extract_job_keywords_batch([])
+        assert results == []

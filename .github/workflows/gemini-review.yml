@@ -1,0 +1,32 @@
+name: Gemini Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  
+
+      - name: Gemini Code Review
+        uses: sshnaidm/gemini-code-review-action@v1
+        with:
+          gemini-key: ${{ secrets.GEMINI_API_KEY }}
+          model: "gemini-pro"
+          prompt: |
+            You are a senior software engineer. Review this code diff.
+            Focus on:
+            1. Logic errors and potential bugs.
+            2. Security vulnerabilities.
+            3. Code efficiency.
+            4. Do NOT nitpick about formatting.
+            5. Be concise.
