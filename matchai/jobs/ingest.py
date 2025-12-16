@@ -17,6 +17,27 @@ from matchai.schemas.job import Company, Job
 logger = logging.getLogger(__name__)
 
 
+def _normalize_position(pos: dict) -> dict:
+    """Normalize position data from Comeet API to match Job schema.
+
+    Args:
+        pos: Raw position dict from Comeet API.
+
+    Returns:
+        Normalized position dict ready for Job model.
+    """
+    normalized = pos.copy()
+
+    # Handle location - API returns dict, schema expects string
+    location = normalized.get("location")
+    if isinstance(location, dict):
+        location_name = location.get("name", None)
+        is_remote = location.get("is_remote", False)
+        normalized["location"] = "Remote" if is_remote else location_name
+
+    return normalized
+
+
 def load_companies_from_file(file_path: Path) -> int:
     """Load companies from a JSON file and add them to the database.
 
@@ -114,7 +135,8 @@ def ingest_from_api() -> dict:
             if job_uid in existing_db_uids:
                 stats["jobs_skipped"] += 1
             else:
-                job = Job(**pos)
+                normalized_pos = _normalize_position(pos)
+                job = Job(**normalized_pos)
                 all_new_jobs.append(job)
 
     if all_new_jobs:

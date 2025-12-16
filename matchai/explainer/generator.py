@@ -3,8 +3,10 @@
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
+from rapidfuzz import fuzz
 
-from matchai.jobs.preprocessor import extract_details_text
+from matchai.config import SKILL_MATCH_THRESHOLD
+from matchai.jobs.preprocessor import extract_details_text, extract_job_keywords
 from matchai.schemas.candidate import CandidateProfile
 from matchai.schemas.job import Job
 from matchai.utils import get_llm
@@ -101,3 +103,42 @@ def generate_explanation(
         raise ValueError("LLM failed to generate explanation")
 
     return result.bullet_points
+
+
+def find_missing_skills(job: Job, candidate: CandidateProfile) -> list[str]:
+    """Identify skills required by job that candidate doesn't have.
+
+    Uses deterministic text matching with RapidFuzz to find job skills
+    not present in the candidate's profile.
+
+    Args:
+        job: Job position to extract keywords from.
+        candidate: Candidate profile with skills, tools, and domains.
+
+    Returns:
+        List of missing skills/technologies from the job requirements.
+    """
+    job_keywords = extract_job_keywords(job)
+    if not job_keywords:
+        return []
+
+    candidate_terms = {
+        term.lower()
+        for skill_list in [
+            candidate.skills,
+            candidate.tools_frameworks,
+            candidate.domains,
+        ]
+        for term in skill_list
+    }
+
+    missing_skills = [
+        keyword
+        for keyword in job_keywords
+        if not any(
+            fuzz.ratio(keyword.lower(), candidate_term) >= SKILL_MATCH_THRESHOLD
+            for candidate_term in candidate_terms
+        )
+    ]
+
+    return missing_skills

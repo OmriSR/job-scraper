@@ -169,6 +169,46 @@ def get_jobs_by_uids(uids: list[str]) -> list[Job]:
     return [_row_to_job(row) for row in rows]
 
 
+def get_jobs(
+    location: str | None = None,
+    seniority_level: str | None = None,
+) -> list[Job]:
+    """Retrieve jobs from database with optional filters.
+
+    This function pushes filtering down to the database level to avoid
+    loading all jobs into memory.
+
+    Args:
+        location: Optional location filter (case-insensitive partial match).
+        seniority_level: Optional seniority level filter (exact match on experience_level).
+
+    Returns:
+        List of matching Job objects.
+    """
+    query = "SELECT * FROM jobs"
+    params: list[str] = []
+    conditions: list[str] = []
+
+    if location:
+        conditions.append("location LIKE ?")
+        params.append(f"%{location}%")
+
+    if seniority_level:
+        conditions.append("experience_level = ?")
+        params.append(seniority_level)
+
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+    return [_row_to_job(row) for row in rows]
+
+
 def get_existing_job_uids() -> set[str]:
     """Get all existing job UIDs for idempotency checks."""
     with sqlite3.connect(DB_PATH) as conn:
