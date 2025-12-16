@@ -1,0 +1,31 @@
+name: Gemini Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize] # Runs when PR is opened or new code is pushed
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # Needed to post comments
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Gemini Code Review
+        uses: sshnaidm/gemini-code-review-action@v1
+        with:
+          gemini-key: ${{ secrets.GEMINI_API_KEY }}
+          model: "gemini-1.5-flash" # Fast and free-tier friendly
+          # Optional: Customize how it reviews your code
+          prompt: |
+            You are a senior software engineer. Review this code diff.
+            Focus on:
+            1. Logic errors and potential bugs.
+            2. Security vulnerabilities.
+            3. Code efficiency (Big O notation if relevant).
+            4. Do NOT nitpick about formatting or whitespace.
+            5. Be concise and professional.
