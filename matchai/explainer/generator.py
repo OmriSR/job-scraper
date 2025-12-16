@@ -1,0 +1,103 @@
+"""LLM-based explanation generation for job matches."""
+
+from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from pydantic import BaseModel, Field
+
+from matchai.jobs.preprocessor import extract_details_text
+from matchai.schemas.candidate import CandidateProfile
+from matchai.schemas.job import Job
+from matchai.utils import get_llm
+
+EXPLANATION_PROMPT = """\
+You are a career advisor helping a job seeker understand why a position might be a good match.
+
+CANDIDATE PROFILE:
+Skills: {candidate_skills}
+Tools/Frameworks: {candidate_tools}
+Domains: {candidate_domains}
+Years of Experience: {years_experience}
+
+JOB POSITION:
+Title: {job_title}
+Company: {company_name}
+Location: {job_location}
+Description: {job_description}
+
+MATCH SCORES:
+Similarity Score: {similarity_score:.0%}
+Skill Match Score: {filter_score:.0%}
+
+Generate 2-3 concise bullet points explaining why this job is a good match for the candidate.
+Focus on:
+- Matching skills and technologies
+- Relevant domain experience
+- Career growth opportunities
+
+{format_instructions}\
+"""
+
+
+class ExplanationOutput(BaseModel):
+    """Intermediate schema for LLM explanation generation output.
+
+    This schema defines the structure that the LLM should return when generating
+    match explanations. The bullet_points field is extracted and returned
+    directly by generate_explanation().
+    """
+
+    bullet_points: list[str] = Field(
+        description="2-3 concise bullet points explaining the match",
+        min_length=2,
+        max_length=3,
+    )
+
+
+def generate_explanation(
+    job: Job,
+    candidate: CandidateProfile,
+    similarity_score: float,
+    filter_score: float,
+) -> list[str]:
+    """Generate explanation bullet points for a job match using LLM.
+
+    Args:
+        job: Matched job position.
+        candidate: Candidate profile.
+        similarity_score: Semantic similarity score (0-1).
+        filter_score: Deterministic filter score (0-1).
+
+    Returns:
+        List of 2-3 explanation bullet points.
+
+    Raises:
+        ValueError: If LLM fails to generate explanation.
+    """
+    llm = get_llm()
+    parser = PydanticOutputParser(pydantic_object=ExplanationOutput)
+
+    prompt = ChatPromptTemplate.from_template(EXPLANATION_PROMPT)
+    chain = prompt | llm | parser
+
+    job_description = extract_details_text(job.details)
+    if len(job_description) > 2000:
+        job_description = job_description[:2000] + "..."
+
+    result = chain.invoke({
+        "candidate_skills": ", ".join(candidate.skills),
+        "candidate_tools": ", ".join(candidate.tools_frameworks),
+        "candidate_domains": ", ".join(candidate.domains),
+        "years_experience": candidate.years_experience or "Unknown",
+        "job_title": job.name,
+        "company_name": job.company_name or "Unknown",
+        "job_location": job.location or "Not specified",
+        "job_description": job_description,
+        "similarity_score": similarity_score,
+        "filter_score": filter_score,
+        "format_instructions": parser.get_format_instructions(),
+    })
+
+    if result is None:
+        raise ValueError("LLM failed to generate explanation")
+
+    return result.bullet_points
