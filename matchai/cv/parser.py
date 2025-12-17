@@ -43,7 +43,8 @@ class LLMCandidateOutput(BaseModel):
         description="Inferred seniority level: junior, mid, senior, lead, principal, or staff"
     )
     years_experience: int | None = Field(
-        default=None, description="Total years of professional experience, if determinable"
+        default=None,
+        description="Total years of professional experience, if determinable",
     )
     domains: list[str] = Field(
         description="Industry domains or areas of expertise (e.g., fintech, healthcare)"
@@ -68,11 +69,13 @@ def parse_cv(cv_text: str) -> CandidateProfile:
 
     prompt = ChatPromptTemplate.from_template(CV_PARSING_PROMPT)
     chain = prompt | llm | parser
-    
-    result = chain.invoke({
-        "cv_text": cv_text,
-        "format_instructions": parser.get_format_instructions(),
-    })
+
+    result = chain.invoke(
+        {
+            "cv_text": cv_text,
+            "format_instructions": parser.get_format_instructions(),
+        }
+    )
 
     if result is None:
         raise ValueError("LLM failed to parse CV into structured format")
