@@ -68,7 +68,7 @@ def parse_cv(cv_text: str) -> CandidateProfile:
 
     prompt = ChatPromptTemplate.from_template(CV_PARSING_PROMPT)
     chain = prompt | llm | parser
-
+    
     result = chain.invoke({
         "cv_text": cv_text,
         "format_instructions": parser.get_format_instructions(),
