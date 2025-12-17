@@ -62,7 +62,7 @@ def parse_cv(cv_text: str) -> CandidateProfile:
         CandidateProfile with extracted information.
 
     Raises:
-        ValueError: If LLM fails to parse the CV.
+        ValueError: If LLM fails to parse the CV
     """
     llm = get_llm()
     parser = PydanticOutputParser(pydantic_object=LLMCandidateOutput)
