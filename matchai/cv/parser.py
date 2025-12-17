@@ -16,13 +16,19 @@ CV TEXT:
 Guidelines:
 - Be thorough but avoid duplicating items across categories
 - Normalize all values to lowercase
-- For seniority, infer from years of experience and role titles:
-  - junior: 0-2 years, entry-level roles
-  - mid: 2-5 years, independent contributor
-  - senior: 5-8 years, mentoring others
-  - lead: 8+ years, team leadership
-  - principal: 10+ years, technical strategy
-  - staff: 12+ years, organization-wide impact
+- For seniority, infer based on DOMAIN-SPECIFIC experience (not total career years):
+  - Identify the candidate's PRIMARY/TARGET domain from their most recent roles
+  - Count only years of experience IN THAT SPECIFIC DOMAIN
+  - Experience in unrelated fields does NOT transfer (e.g., 5 years in software engineering = 0 years in data science)
+  - Adjacent/transferable experience counts partially (e.g., backend dev -> DevOps = ~50% transfer)
+
+  Seniority levels based on domain-specific years:
+  - junior: 0-2 years in the domain
+  - mid: 2-5 years in the domain
+  - senior: 5-8 years in the domain
+  - lead: 8+ years in the domain, team leadership
+  - principal: 10+ years in the domain, technical strategy
+  - staff: 12+ years in the domain, organization-wide impact
 
 {format_instructions}\
 """

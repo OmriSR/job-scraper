@@ -29,7 +29,7 @@ class TestGenerateExplanation:
             ]
         )
 
-        with patch("matchai.utils.get_llm"), patch(
+        with patch("matchai.explainer.generator.get_llm"), patch(
             "matchai.explainer.generator.PydanticOutputParser"
         ) as mock_parser_class, patch(
             "matchai.explainer.generator.ChatPromptTemplate"
@@ -60,7 +60,7 @@ class TestGenerateExplanation:
         candidate = make_test_candidate(skills=["python"])
         job = make_test_job(uid="job-1", name="Developer")
 
-        with patch("matchai.utils.get_llm"), patch(
+        with patch("matchai.explainer.generator.get_llm"), patch(
             "matchai.explainer.generator.PydanticOutputParser"
         ) as mock_parser_class, patch(
             "matchai.explainer.generator.ChatPromptTemplate"

@@ -44,7 +44,7 @@ from matchai.matching.filter import apply_filters
 from matchai.matching.ranker import rank_jobs
 from matchai.schemas.candidate import CandidateProfile, SeniorityLevel
 from matchai.schemas.job import Company, Job, JobDetail
-from matchai.utils import OllamaUnavailableError
+from matchai.utils import LLMConfigurationError
 from tests.test_utils import make_test_candidate, make_test_job
 
 runner = CliRunner()
@@ -526,7 +526,7 @@ class TestFullMatchingPipeline:
                 ]
             )
 
-            with patch("matchai.utils.get_llm"), patch(
+            with patch("matchai.explainer.generator.get_llm"), patch(
                 "matchai.explainer.generator.PydanticOutputParser"
             ) as mock_parser_class, patch(
                 "matchai.explainer.generator.ChatPromptTemplate"
@@ -647,23 +647,23 @@ class TestCLICommands:
             assert result.exit_code == 1
             assert "database not found" in result.stdout.lower()
 
-    def test_match_command_ollama_unavailable(self, temp_db_and_chroma, tmp_path):
-        """Test match command when Ollama is not running."""
+    def test_match_command_llm_not_configured(self, temp_db_and_chroma, tmp_path):
+        """Test match command when Groq API key is not configured."""
         cv_path = create_sample_cv_pdf(tmp_path)
 
         with patch("matchai.main.DB_PATH", temp_db_and_chroma["db_path"]), patch(
-            "matchai.main.check_ollama_available"
+            "matchai.main.check_llm_configured"
         ) as mock_check:
-            mock_check.side_effect = OllamaUnavailableError(
-                "Cannot connect to Ollama at http://localhost:11434. "
-                "Please ensure Ollama is running with: ollama serve"
+            mock_check.side_effect = LLMConfigurationError(
+                "GROQ_API_KEY environment variable is not set. "
+                "Please create a .env file with your Groq API key."
             )
 
             result = runner.invoke(app, ["match", "--cv", str(cv_path)])
 
             assert result.exit_code == 1
-            assert "cannot connect to ollama" in result.stdout.lower()
-            assert "ollama serve" in result.stdout.lower()
+            assert "groq_api_key" in result.stdout.lower()
+            assert ".env" in result.stdout.lower()
 
 
 # =============================================================================
@@ -862,7 +862,7 @@ class TestLLMIntegration:
                 ]
             )
 
-            with patch("matchai.utils.get_llm"), patch(
+            with patch("matchai.explainer.generator.get_llm"), patch(
                 "matchai.explainer.generator.PydanticOutputParser"
             ) as mock_parser_class, patch(
                 "matchai.explainer.generator.ChatPromptTemplate"

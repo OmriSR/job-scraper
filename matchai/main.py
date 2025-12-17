@@ -15,12 +15,11 @@ from matchai.cv.extractor import extract_text_from_pdf
 from matchai.cv.parser import parse_cv
 from matchai.explainer.generator import find_missing_skills, generate_explanation
 from matchai.jobs.database import get_all_jobs, get_jobs
-from matchai.jobs.embeddings import embed_candidate
 from matchai.jobs.ingest import ingest_from_api, load_companies_from_file
 from matchai.matching.filter import apply_filters
 from matchai.matching.ranker import rank_jobs
 from matchai.schemas.match import MatchResult
-from matchai.utils import OllamaUnavailableError, check_ollama_available
+from matchai.utils import LLMConfigurationError, check_llm_configured
 
 app = typer.Typer(help="MatchAI - Local job matching based on CV analysis")
 console = Console()
@@ -45,7 +44,7 @@ def ingest(
     try:
         # Load companies
         console.print(f"  Loading companies from {companies}...")
-        companies_added = load_companies_from_file(companies)
+        companies_added = load_companies_from_file(path=companies)
         console.print(f"  Added {companies_added} new companies")
 
         # Fetch jobs from API
@@ -92,23 +91,20 @@ def match(
         )
         raise typer.Exit(1)
 
-    # Check Ollama availability before starting expensive operations
+    # Check LLM configuration before starting expensive operations
     try:
-        check_ollama_available()
-    except OllamaUnavailableError as e:
+        check_llm_configured()
+    except LLMConfigurationError as e:
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
 
     try:
         # Extract and parse CV
         console.print("  Extracting text from PDF...")
-        cv_text = extract_text_from_pdf(cv)
+        cv_text = extract_text_from_pdf(file_path=cv)
 
         console.print("  Parsing CV with LLM...")
-        candidate = parse_cv(cv_text)
-
-        console.print("  Embedding candidate profile...")
-        candidate_embedding = embed_candidate(candidate)
+        candidate = parse_cv(cv_text=cv_text)
 
         # Load jobs with database-level filtering
         console.print("  Loading jobs from database...")
@@ -121,7 +117,7 @@ def match(
         # Apply skill and seniority filters (in-memory, more complex logic)
         console.print("  Applying skill and seniority filters...")
         filtered_jobs = apply_filters(
-            jobs_from_db, candidate, location=None  # location already filtered at DB
+            jobs=jobs_from_db, candidate=candidate, location=None  # location already filtered at DB
         )
 
         if not filtered_jobs:
@@ -132,36 +128,27 @@ def match(
 
         # Rank jobs
         console.print("  Ranking jobs by similarity...")
-        ranked_results = rank_jobs(filtered_jobs, candidate, candidate_embedding)
+        ranked_results = rank_jobs(filtered_jobs=filtered_jobs, candidate=candidate)
 
         # Get top N
         top_matches = ranked_results[:top_n]
 
         # Generate explanations
         console.print("  Generating match explanations...")
-        matches: list[MatchResult] = []
-        for job, similarity_score, filter_score, final_score in top_matches:
-            explanation = generate_explanation(
-                job, candidate, similarity_score, filter_score
+        for match in top_matches:
+            match.explanation = generate_explanation(
+                job=match.job,
+                candidate=candidate,
+                similarity_score=match.similarity_score,
+                filter_score=match.filter_score,
             )
-            missing_skills = find_missing_skills(job, candidate)
-
-            matches.append(
-                MatchResult(
-                    job=job,
-                    similarity_score=similarity_score,
-                    filter_score=filter_score,
-                    final_score=final_score,
-                    explanation=explanation,
-                    missing_skills=missing_skills,
-                )
-            )
+            match.missing_skills = find_missing_skills(job=match.job, candidate=candidate)
 
         # Output results
         if output_json:
-            _output_json(matches)
+            _output_json(matches=top_matches)
         else:
-            _output_pretty(matches)
+            _output_pretty(matches=top_matches)
 
     except Exception as e:
         console.print(f"[red]Error during matching: {e}[/red]")
@@ -210,7 +197,7 @@ def info() -> None:
 def _output_json(matches: list[MatchResult]) -> None:
     """Output matches as JSON to stdout."""
     output = [match.model_dump(mode="json") for match in matches]
-    json.dump(output, sys.stdout, indent=2)
+    json.dump(obj=output, fp=sys.stdout, indent=2)
     sys.stdout.write("\n")
 
 
@@ -218,7 +205,7 @@ def _output_pretty(matches: list[MatchResult]) -> None:
     """Output matches in pretty console format."""
     console.print(f"\n[bold green]Found {len(matches)} top matches![/bold green]\n")
 
-    for i, match in enumerate(matches, 1):
+    for i, match in enumerate(iterable=matches, start=1):
         job = match.job
 
         # Create header
@@ -252,11 +239,17 @@ def _output_pretty(matches: list[MatchResult]) -> None:
                 content.append(f"  ... and {len(match.missing_skills) - 5} more")
 
         # Job link
-        if job.link:
-            content.append(f"\n[cyan]Apply:[/cyan] {job.link}")
+        job_url = (
+            job.url_active_page
+            or job.position_url
+            or job.url_comeet_hosted_page
+            or job.url_recruit_hosted_page
+        )
+        if job_url:
+            content.append(f"\n[cyan]Apply:[/cyan] {job_url}")
 
         panel = Panel(
-            "\n".join(content),
+            renderable="\n".join(content),
             title=header,
             border_style="green" if i == 1 else "blue",
         )

@@ -38,7 +38,7 @@ class TestParseCv:
         """
 
     def test_parse_cv_returns_candidate_profile(self, mock_llm_response, sample_cv_text):
-        with patch("matchai.utils.get_llm"), patch(
+        with patch("matchai.cv.parser.get_llm"), patch(
             "matchai.cv.parser.PydanticOutputParser"
         ) as mock_parser_class, patch(
             "matchai.cv.parser.ChatPromptTemplate"
@@ -75,7 +75,7 @@ class TestParseCv:
             keywords=["API"],
         )
 
-        with patch("matchai.utils.get_llm"), patch(
+        with patch("matchai.cv.parser.get_llm"), patch(
             "matchai.cv.parser.PydanticOutputParser"
         ) as mock_parser_class, patch(
             "matchai.cv.parser.ChatPromptTemplate"
@@ -101,7 +101,7 @@ class TestParseCv:
             assert result.keywords == ["api"]
 
     def test_parse_cv_raises_on_none_response(self, sample_cv_text):
-        with patch("matchai.utils.get_llm"), patch(
+        with patch("matchai.cv.parser.get_llm"), patch(
             "matchai.cv.parser.PydanticOutputParser"
         ) as mock_parser_class, patch(
             "matchai.cv.parser.ChatPromptTemplate"
