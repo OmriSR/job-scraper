@@ -7,7 +7,7 @@ MatchAI - A local, zero-cost job matching system that ranks job positions based 
 
 **Tech Stack:**
 - Python 3.11+
-- LLM: Ollama (llama3.2) via LangChain
+- LLM: Groq API (llama-3.3-70b-versatile) via LangChain
 - Embeddings: sentence-transformers (all-MiniLM-L6-v2)
 - Vector Store: ChromaDB
 - Database: SQLite
@@ -26,9 +26,10 @@ MatchAI - A local, zero-cost job matching system that ranks job positions based 
    python -m spacy download en_core_web_sm
    ```
 
-3. Install and start Ollama, then pull the model:
+3. Set up Groq API key:
    ```bash
-   ollama pull llama3.2
+   cp .env.example .env
+   # Edit .env and add your Groq API key from https://console.groq.com
    ```
 
 ## Common Commands

@@ -1,14 +1,19 @@
+import os
 from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Paths
 DATA_DIR = Path("data")
 DB_PATH = DATA_DIR / "matchai.db"
 CHROMA_PATH = DATA_DIR / "chroma_db"
 
-# LLM settings (Ollama)
-OLLAMA_BASE_URL = "http://localhost:11434"
-OLLAMA_MODEL = "llama3.2"
-OLLAMA_TEMPERATURE = 0.0
+# LLM settings (Groq)
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_MODEL = "llama-3.3-70b-versatile"
+LLM_TEMPERATURE = 0.0
 
 # Embedding model
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"

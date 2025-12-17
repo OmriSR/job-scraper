@@ -1,47 +1,39 @@
 """Shared utilities for matchai."""
 
-import httpx
-from langchain_ollama import ChatOllama
+from langchain_groq import ChatGroq
 
-from matchai.config import OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_TEMPERATURE
+from matchai.config import GROQ_API_KEY, GROQ_MODEL, LLM_TEMPERATURE
+
+_llm_instance: ChatGroq | None = None
 
 
-class OllamaUnavailableError(Exception):
-    """Raised when Ollama server is not reachable."""
+class LLMConfigurationError(Exception):
+    """Raised when LLM is not properly configured."""
 
     pass
 
 
-def check_ollama_available() -> None:
-    """Check if Ollama server is running and reachable.
+def check_llm_configured() -> None:
+    """Check if Groq API key is configured.
 
     Raises:
-        OllamaUnavailableError: If Ollama is not running or unreachable.
+        LLMConfigurationError: If GROQ_API_KEY is not set.
     """
-    try:
-        response = httpx.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=5.0)
-        response.raise_for_status()
-    except httpx.ConnectError:
-        raise OllamaUnavailableError(
-            f"Cannot connect to Ollama at {OLLAMA_BASE_URL}. "
-            "Please ensure Ollama is running with: ollama serve"
-        )
-    except httpx.TimeoutException:
-        raise OllamaUnavailableError(
-            f"Connection to Ollama at {OLLAMA_BASE_URL} timed out. "
-            "Please check if Ollama is responding."
-        )
-    except httpx.HTTPStatusError as e:
-        raise OllamaUnavailableError(
-            f"Ollama returned an error: {e.response.status_code}. "
-            "Please check your Ollama installation."
+    if not GROQ_API_KEY:
+        raise LLMConfigurationError(
+            "GROQ_API_KEY environment variable is not set. "
+            "Please create a .env file with your Groq API key. "
+            "Get your free API key at https://console.groq.com"
         )
 
 
-def get_llm() -> ChatOllama:
-    """Initialize Ollama LLM with configured settings."""
-    return ChatOllama(
-        model=OLLAMA_MODEL,
-        temperature=OLLAMA_TEMPERATURE,
-        base_url=OLLAMA_BASE_URL,
-    )
+def get_llm() -> ChatGroq:
+    """Get singleton Groq LLM instance."""
+    global _llm_instance
+    if _llm_instance is None:
+        _llm_instance = ChatGroq(
+            model=GROQ_MODEL,
+            temperature=LLM_TEMPERATURE,
+            api_key=GROQ_API_KEY,
+        )
+    return _llm_instance
