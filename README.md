@@ -120,111 +120,6 @@ matchai info
 
 Shows statistics about jobs, companies, and locations in your database.
 
-## Manual Testing Guide
-
-### Test 1: Create Sample Company File
-
-Create `test_companies.json`:
-```json
-[
-  {
-    "name": "Test Company",
-    "uid": "test-company-123",
-    "token": "test-token-456",
-    "extracted_from": "comeet"
-  }
-]
-```
-
-### Test 2: Create Sample CV
-
-Create a PDF CV with:
-- Your skills (e.g., "Python, JavaScript, React")
-- Experience level (e.g., "5 years experience")
-- Domains (e.g., "fintech, e-commerce")
-
-Or use an existing CV PDF.
-
-### Test 3: Run Ingestion
-
-```bash
-# This will fetch real jobs from Comeet API
-matchai ingest --companies test_companies.json
-```
-
-**Note**: You need valid Comeet API credentials. If you don't have them, you'll need to:
-1. Contact companies that use Comeet for their careers page
-2. Or modify the code to support local JSON job files (not currently implemented)
-
-### Test 4: Run Matching
-
-```bash
-matchai match --cv /path/to/cv.pdf
-```
-
-Expected output:
-```
-Processing CV: /path/to/cv.pdf
-  Extracting text from PDF...
-  Parsing CV with LLM...
-  Embedding candidate profile...
-  Loading jobs from database...
-  Applying skill and seniority filters...
-  Ranking jobs by similarity...
-  Generating match explanations...
-
-Found 5 top matches!
-
-┌─ #1 Senior Software Engineer at Example Corp ─────────────────┐
-│ Location: Tel Aviv, Israel                                     │
-│ Match Score: 87.3% (Similarity: 85.2%, Skills: 91.5%)         │
-│                                                                │
-│ Why it's a match:                                             │
-│   • Strong alignment with Python and backend development     │
-│   • Your 5 years experience matches senior-level requirements│
-│   • Relevant fintech domain expertise                        │
-│                                                                │
-│ Skills to develop:                                            │
-│   Kubernetes, GraphQL, PostgreSQL                             │
-│                                                                │
-│ Apply: https://jobs.example.com/position/123                  │
-└────────────────────────────────────────────────────────────────┘
-```
-
-### Test 5: JSON Output
-
-```bash
-matchai match --cv /path/to/cv.pdf --json > matches.json
-```
-
-This outputs structured JSON for integration with other tools.
-
-## Project Structure
-
-```
-matchai/
-├── main.py              # CLI entrypoint (typer)
-├── config.py            # Configuration settings
-├── utils.py             # Shared utilities (LLM setup)
-├── schemas/             # Pydantic models
-│   ├── candidate.py     # CandidateProfile, SeniorityLevel
-│   ├── job.py          # Job, JobDetail, Company
-│   └── match.py        # MatchResult
-├── cv/                  # CV processing
-│   ├── extractor.py    # PDF → text extraction
-│   └── parser.py       # LLM-based CV parsing
-├── jobs/                # Job data layer
-│   ├── database.py     # SQLite operations
-│   ├── preprocessor.py # Text preprocessing, keyword extraction
-│   ├── embeddings.py   # Sentence embeddings, ChromaDB
-│   └── ingest.py       # Job ingestion pipeline
-├── matching/            # Matching engine
-│   ├── filter.py       # Deterministic filters
-│   └── ranker.py       # Semantic ranking
-└── explainer/           # Match explanation
-    └── generator.py    # LLM explanation generation
-```
-
 ## Configuration
 
 All configuration is in [matchai/config.py](matchai/config.py):
@@ -329,31 +224,6 @@ Download the model:
 python -m spacy download en_core_web_sm
 ```
 
-## Development
-
-### Running Tests
-
-```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=matchai
-
-# Run specific test file
-pytest tests/test_cv_parser.py -v
-```
-
-### Code Quality
-
-```bash
-# Lint
-ruff check .
-
-# Format
-ruff format .
-```
-
 ## Limitations
 
 1. **Comeet API Only**: Currently only supports Comeet API for job fetching
@@ -374,14 +244,6 @@ ruff format .
 ## License
 
 This project is for educational and personal use.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests and linting
-5. Submit a pull request
 
 ## Credits
 
