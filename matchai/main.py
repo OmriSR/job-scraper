@@ -13,7 +13,11 @@ from rich.table import Table
 from matchai.config import DB_PATH, DEFAULT_TOP_N
 from matchai.cv.extractor import extract_text_from_pdf
 from matchai.cv.parser import parse_cv
-from matchai.explainer.generator import find_missing_skills, generate_explanation
+from matchai.explainer.generator import (
+    find_missing_skills,
+    generate_explanation,
+    refine_skills_and_tips,
+)
 from matchai.jobs.database import get_all_jobs, get_jobs
 from matchai.jobs.ingest import ingest_from_api, load_companies_from_file
 from matchai.matching.filter import apply_filters
@@ -28,14 +32,19 @@ console = Console()
 @app.command()
 def ingest(
     companies: Path = typer.Option(
-        ..., "--companies", "-c", help="Path to companies JSON file with API credentials"
+        ...,
+        "--companies",
+        "-c",
+        help="Path to companies JSON file with API credentials",
     ),
 ) -> None:
     """Ingest jobs from Comeet API using company credentials.
 
     First loads companies from JSON file, then fetches jobs from Comeet API.
     """
-    console.print("[bold cyan]Loading companies and fetching jobs from API...[/bold cyan]")
+    console.print(
+        "[bold cyan]Loading companies and fetching jobs from API...[/bold cyan]"
+    )
 
     if not companies.exists():
         console.print(f"[red]Error: Companies file not found: {companies}[/red]")
@@ -44,11 +53,11 @@ def ingest(
     try:
         # Load companies
         console.print(f"  Loading companies from {companies}...")
-        companies_added = load_companies_from_file(path=companies)
+        companies_added = load_companies_from_file(file_path=companies)
         console.print(f"  Added {companies_added} new companies")
 
         # Fetch jobs from API
-        console.print("  Fetching jobs from Comeet API...")
+        console.print("  Fetching jobs...")
         stats = ingest_from_api()
 
         console.print("\n[bold green]Ingestion complete![/bold green]")
@@ -61,6 +70,7 @@ def ingest(
     except Exception as e:
         console.print(f"[red]Error during ingestion: {e}[/red]")
         import traceback
+
         traceback.print_exc()
         raise typer.Exit(1)
 
@@ -111,13 +121,17 @@ def match(
         jobs_from_db = get_jobs(location=location)
 
         if not jobs_from_db:
-            console.print("[yellow]No jobs found matching your location filter.[/yellow]")
+            console.print(
+                "[yellow]No jobs found matching your location filter.[/yellow]"
+            )
             raise typer.Exit(0)
 
         # Apply skill and seniority filters (in-memory, more complex logic)
         console.print("  Applying skill and seniority filters...")
         filtered_jobs = apply_filters(
-            jobs=jobs_from_db, candidate=candidate, location=None  # location already filtered at DB
+            jobs=jobs_from_db,
+            candidate=candidate,
+            location=None,  # location already filtered at DB
         )
 
         if not filtered_jobs:
@@ -142,7 +156,21 @@ def match(
                 similarity_score=match.similarity_score,
                 filter_score=match.filter_score,
             )
-            match.missing_skills = find_missing_skills(job=match.job, candidate=candidate)
+            match.missing_skills = find_missing_skills(
+                job=match.job, candidate=candidate
+            )
+
+        # Refine missing skills and generate interview tips using LLM
+        console.print("  Refining skills and generating interview tips...")
+        for match in top_matches:
+            if match.missing_skills:
+                refined_skills, interview_tips = refine_skills_and_tips(
+                    candidate=candidate,
+                    job=match.job,
+                    raw_missing_skills=match.missing_skills,
+                )
+                match.missing_skills = refined_skills
+                match.interview_tips = interview_tips
 
         # Output results
         if output_json:
@@ -165,7 +193,9 @@ def info() -> None:
 
     # Database status
     if not DB_PATH.exists():
-        console.print("[yellow]Database not found. Run 'matchai ingest' first.[/yellow]")
+        console.print(
+            "[yellow]Database not found. Run 'matchai ingest' first.[/yellow]"
+        )
         raise typer.Exit(0)
 
     try:
@@ -234,9 +264,15 @@ def _output_pretty(matches: list[MatchResult]) -> None:
         # Missing skills
         if match.missing_skills:
             content.append(f"\n[cyan]Skills to develop:[/cyan]")
-            content.append(f"  {', '.join(match.missing_skills[:5])}")
-            if len(match.missing_skills) > 5:
-                content.append(f"  ... and {len(match.missing_skills) - 5} more")
+            content.append(f"  {', '.join(match.missing_skills[:7])}")
+            if len(match.missing_skills) > 7:
+                content.append(f"  ... and {len(match.missing_skills) - 7} more")
+
+        # Interview tips
+        if match.interview_tips:
+            content.append(f"\n[yellow]Prepare for interview:[/yellow]")
+            for tip in match.interview_tips:
+                content.append(f"  • {tip}")
 
         # Job link
         job_url = (

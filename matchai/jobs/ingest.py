@@ -29,11 +29,10 @@ def _normalize_position(pos: dict) -> dict:
     normalized = pos.copy()
 
     # Handle location - API returns dict, schema expects string
+    # Prefer 'city', fall back to 'name'
     location = normalized.get("location")
     if isinstance(location, dict):
-        location_name = location.get("name", None)
-        is_remote = location.get("is_remote", False)
-        normalized["location"] = "Remote" if is_remote else location_name
+        normalized["location"] = location.get("city") or location.get("name")
 
     return normalized
 

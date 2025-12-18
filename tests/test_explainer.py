@@ -4,7 +4,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from matchai.explainer.generator import ExplanationOutput, generate_explanation
+from matchai.explainer.generator import (
+    ExplanationOutput,
+    RefinedSkillsOutput,
+    generate_explanation,
+    refine_skills_and_tips,
+)
 from tests.test_utils import make_test_candidate, make_test_job
 
 
@@ -83,4 +88,95 @@ class TestGenerateExplanation:
                     candidate=candidate,
                     similarity_score=0.85,
                     filter_score=0.75,
+                )
+
+
+class TestRefineSkillsAndTips:
+    def test_refines_skills_and_generates_tips(self):
+        candidate = make_test_candidate(
+            skills=["python", "javascript"],
+            tools=["docker", "git"],
+            seniority="mid",
+        )
+        job = make_test_job(
+            uid="job-123",
+            name="Senior Backend Engineer",
+            details_text="Looking for someone with k8s and AWS experience.",
+        )
+        raw_missing_skills = ["k8s", "aws", "terraform", "experience", "team"]
+
+        mock_response = RefinedSkillsOutput(
+            refined_skills=["Kubernetes", "AWS", "Terraform"],
+            interview_tips=[
+                "Study Kubernetes fundamentals and pod networking",
+                "Review AWS core services (EC2, S3, Lambda)",
+            ],
+        )
+
+        with patch("matchai.explainer.generator.get_llm"), patch(
+            "matchai.explainer.generator.PydanticOutputParser"
+        ) as mock_parser_class, patch(
+            "matchai.explainer.generator.ChatPromptTemplate"
+        ) as mock_prompt_class:
+            mock_parser = MagicMock()
+            mock_parser.get_format_instructions.return_value = "format instructions"
+            mock_parser_class.return_value = mock_parser
+
+            mock_prompt = MagicMock()
+            mock_prompt_class.from_template.return_value = mock_prompt
+
+            mock_chain = MagicMock()
+            mock_chain.invoke.return_value = mock_response
+            mock_prompt.__or__ = MagicMock(return_value=MagicMock())
+            mock_prompt.__or__.return_value.__or__ = MagicMock(return_value=mock_chain)
+
+            refined_skills, interview_tips = refine_skills_and_tips(
+                candidate=candidate,
+                job=job,
+                raw_missing_skills=raw_missing_skills,
+            )
+
+            assert len(refined_skills) == 3
+            assert "Kubernetes" in refined_skills
+            assert len(interview_tips) == 2
+
+    def test_empty_missing_skills_returns_empty(self):
+        candidate = make_test_candidate(skills=["python"])
+        job = make_test_job(uid="job-1", name="Developer")
+
+        refined_skills, interview_tips = refine_skills_and_tips(
+            candidate=candidate,
+            job=job,
+            raw_missing_skills=[],
+        )
+
+        assert refined_skills == []
+        assert interview_tips == []
+
+    def test_raises_on_none_response(self):
+        candidate = make_test_candidate(skills=["python"])
+        job = make_test_job(uid="job-1", name="Developer")
+
+        with patch("matchai.explainer.generator.get_llm"), patch(
+            "matchai.explainer.generator.PydanticOutputParser"
+        ) as mock_parser_class, patch(
+            "matchai.explainer.generator.ChatPromptTemplate"
+        ) as mock_prompt_class:
+            mock_parser = MagicMock()
+            mock_parser.get_format_instructions.return_value = "format instructions"
+            mock_parser_class.return_value = mock_parser
+
+            mock_prompt = MagicMock()
+            mock_prompt_class.from_template.return_value = mock_prompt
+
+            mock_chain = MagicMock()
+            mock_chain.invoke.return_value = None
+            mock_prompt.__or__ = MagicMock(return_value=MagicMock())
+            mock_prompt.__or__.return_value.__or__ = MagicMock(return_value=mock_chain)
+
+            with pytest.raises(ValueError, match="LLM failed to refine skills"):
+                refine_skills_and_tips(
+                    candidate=candidate,
+                    job=job,
+                    raw_missing_skills=["kubernetes", "aws"],
                 )

@@ -24,3 +24,7 @@ class MatchResult(BaseModel):
     missing_skills: list[str] = Field(
         description="Skills required by the job but not found in candidate's CV"
     )
+    interview_tips: list[str] = Field(
+        default_factory=list,
+        description="1-2 actionable tips for interview preparation"
+    )

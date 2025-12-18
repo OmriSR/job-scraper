@@ -138,6 +138,20 @@ class TestMatchResult:
             final_score=0.8,
             explanation=["Strong Python match", "Experience aligns"],
             missing_skills=["kubernetes"],
+            interview_tips=["Study container orchestration"],
         )
         assert match.final_score == 0.8
         assert len(match.explanation) == 2
+        assert len(match.interview_tips) == 1
+
+    def test_interview_tips_default_empty(self):
+        job = Job(uid="123", name="Developer")
+        match = MatchResult(
+            job=job,
+            similarity_score=0.85,
+            filter_score=0.7,
+            final_score=0.8,
+            explanation=["Match"],
+            missing_skills=[],
+        )
+        assert match.interview_tips == []

@@ -39,6 +39,37 @@ Focus on:
 {format_instructions}\
 """
 
+REFINE_SKILLS_PROMPT = """\
+You are a career advisor helping candidates prepare for job interviews.
+
+CANDIDATE PROFILE:
+- Skills: {candidate_skills}
+- Tools/Frameworks: {candidate_tools}
+- Domains: {candidate_domains}
+- Seniority: {candidate_seniority}
+
+JOB POSITION:
+- Title: {job_title}
+- Company: {company_name}
+
+RAW MISSING SKILLS (from keyword extraction):
+{raw_missing_skills}
+
+TASKS:
+1. FILTER & EDIT the missing skills list:
+   - Remove noise (generic words, duplicates, irrelevant terms)
+   - Rephrase abbreviations/acronyms to full names (e.g., "k8s" → "Kubernetes")
+   - Keep only genuine technical skills or requirements
+   - Maximum 5-7 most important skills
+
+2. Provide 1-2 INTERVIEW PREPARATION TIPS:
+   - Actionable advice on what to strengthen or prepare
+   - Focus on the gap between candidate profile and job requirements
+   - Be specific and practical
+
+{format_instructions}\
+"""
+
 
 class ExplanationOutput(BaseModel):
     """Intermediate schema for LLM explanation generation output.
@@ -52,6 +83,17 @@ class ExplanationOutput(BaseModel):
         description="2-3 concise bullet points explaining the match",
         min_length=2,
         max_length=3,
+    )
+
+
+class RefinedSkillsOutput(BaseModel):
+    """LLM output for refined missing skills and interview tips."""
+
+    refined_skills: list[str] = Field(
+        description="Filtered and rephrased missing skills (max 5-7 items)"
+    )
+    interview_tips: list[str] = Field(
+        description="1-2 actionable tips for interview preparation"
     )
 
 
@@ -142,3 +184,47 @@ def find_missing_skills(job: Job, candidate: CandidateProfile) -> list[str]:
     ]
 
     return missing_skills
+
+
+def refine_skills_and_tips(
+    candidate: CandidateProfile,
+    job: Job,
+    raw_missing_skills: list[str],
+) -> tuple[list[str], list[str]]:
+    """Use LLM to filter/edit missing skills and generate interview tips.
+
+    Args:
+        candidate: Candidate profile with skills and experience.
+        job: Job position to prepare for.
+        raw_missing_skills: Raw missing skills from keyword extraction.
+
+    Returns:
+        Tuple of (refined_skills, interview_tips).
+
+    Raises:
+        ValueError: If LLM fails to generate output.
+    """
+    if not raw_missing_skills:
+        return [], []
+
+    llm = get_llm()
+    parser = PydanticOutputParser(pydantic_object=RefinedSkillsOutput)
+
+    prompt = ChatPromptTemplate.from_template(REFINE_SKILLS_PROMPT)
+    chain = prompt | llm | parser
+
+    result = chain.invoke({
+        "candidate_skills": ", ".join(candidate.skills),
+        "candidate_tools": ", ".join(candidate.tools_frameworks),
+        "candidate_domains": ", ".join(candidate.domains),
+        "candidate_seniority": candidate.seniority or "Not specified",
+        "job_title": job.name,
+        "company_name": job.company_name or "Unknown",
+        "raw_missing_skills": ", ".join(raw_missing_skills),
+        "format_instructions": parser.get_format_instructions(),
+    })
+
+    if result is None:
+        raise ValueError("LLM failed to refine skills and generate tips")
+
+    return result.refined_skills, result.interview_tips
