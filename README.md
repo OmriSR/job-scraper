@@ -32,7 +32,7 @@ Job API → SQLite Storage → Preprocessing → ChromaDB Embeddings
 ### Cloud Mode
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Google Cloud Platform                         │
+│                    Google Cloud Platform                        │
 │  ┌────────────────┐       ┌─────────────────────────────────┐   │
 │  │ Cloud Scheduler│──────▶│        Cloud Run Job            │   │
 │  │ (8 AM, 8 PM)   │       │  • Fetch jobs from Comeet API   │   │
