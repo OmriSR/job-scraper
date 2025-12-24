@@ -1,58 +1,21 @@
+"""Job database operations with support for SQLite (local) and PostgreSQL (cloud)."""
+
 import json
 import sqlite3
+from typing import Any
 
-from matchai.config import DATA_DIR, DB_PATH
+import psycopg2
+
+from matchai.db.connection import get_connection, init_tables
 from matchai.schemas.job import Company, Job, JobDetail
 
 
 def init_database() -> None:
-    """Initialize the SQLite database with required tables."""
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    """Initialize the database with required tables.
 
-    with sqlite3.connect(DB_PATH) as conn:
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS jobs (
-                uid TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                department TEXT,
-                email TEXT,
-                email_alias TEXT,
-                url_comeet_hosted_page TEXT,
-                url_recruit_hosted_page TEXT,
-                url_active_page TEXT,
-                employment_type TEXT,
-                experience_level TEXT,
-                location TEXT,
-                internal_use_custom_id TEXT,
-                is_consent_needed INTEGER,
-                referrals_reward TEXT,
-                is_reward INTEGER,
-                is_company_reward INTEGER,
-                company_referrals_reward TEXT,
-                url_detected_page TEXT,
-                picture_url TEXT,
-                time_updated TEXT,
-                company_name TEXT,
-                is_internal INTEGER,
-                linkedin_job_posting_id TEXT,
-                workplace_type TEXT,
-                position_url TEXT,
-                details TEXT
-            )
-        """)
-
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS companies (
-                uid TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                token TEXT NOT NULL,
-                extracted_from TEXT NOT NULL
-            )
-        """)
-
-        conn.commit()
+    Delegates to the db module which handles both SQLite and PostgreSQL.
+    """
+    init_tables()
 
 
 def insert_jobs_to_db(jobs: list[Job]) -> int:
@@ -66,15 +29,16 @@ def insert_jobs_to_db(jobs: list[Job]) -> int:
     """
     inserted = 0
 
-    with sqlite3.connect(DB_PATH) as conn:
-        cursor = conn.cursor()
+    with get_connection() as db:
+        cursor = db.cursor()
+        ph = db.placeholder
 
         for job in jobs:
             details_json = json.dumps([d.model_dump() for d in job.details])
 
             try:
                 cursor.execute(
-                    """
+                    f"""
                     INSERT INTO jobs (
                         uid, name, department, email, email_alias,
                         url_comeet_hosted_page, url_recruit_hosted_page, url_active_page,
@@ -84,12 +48,13 @@ def insert_jobs_to_db(jobs: list[Job]) -> int:
                         url_detected_page, picture_url, time_updated,
                         company_name, is_internal, linkedin_job_posting_id,
                         workplace_type, position_url, details
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES ({", ".join([ph] * 26)})
                     """,
                     (
                         job.uid, job.name, job.department, job.email, job.email_alias,
-                        job.url_comeet_hosted_page, job.url_recruit_hosted_page, job.url_active_page,
-                        job.employment_type, job.experience_level, job.location,
+                        job.url_comeet_hosted_page, job.url_recruit_hosted_page,
+                        job.url_active_page, job.employment_type,
+                        job.experience_level, job.location,
                         job.internal_use_custom_id, job.is_consent_needed, job.referrals_reward,
                         job.is_reward, job.is_company_reward, job.company_referrals_reward,
                         job.url_detected_page, job.picture_url, job.time_updated,
@@ -98,10 +63,10 @@ def insert_jobs_to_db(jobs: list[Job]) -> int:
                     ),
                 )
                 inserted += 1
-            except sqlite3.IntegrityError:
+            except (sqlite3.IntegrityError, psycopg2.IntegrityError):
                 pass  # Job already exists
 
-        conn.commit()
+        db.commit()
 
     return inserted
 
@@ -117,33 +82,34 @@ def insert_companies(companies: list[Company]) -> int:
     """
     inserted = 0
 
-    with sqlite3.connect(DB_PATH) as conn:
-        cursor = conn.cursor()
+    with get_connection() as db:
+        cursor = db.cursor()
+        ph = db.placeholder
 
         for company in companies:
             try:
                 cursor.execute(
-                    "INSERT INTO companies (uid, name, token, extracted_from) VALUES (?, ?, ?, ?)",
+                    f"INSERT INTO companies (uid, name, token, extracted_from) "
+                    f"VALUES ({ph}, {ph}, {ph}, {ph})",
                     (company.uid, company.name, company.token, company.extracted_from),
                 )
                 inserted += 1
-            except sqlite3.IntegrityError:
+            except (sqlite3.IntegrityError, psycopg2.IntegrityError):
                 pass  # Company already exists
 
-        conn.commit()
+        db.commit()
 
     return inserted
 
 
 def get_all_jobs() -> list[Job]:
     """Retrieve all jobs from the database."""
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+    with get_connection() as db:
+        cursor = db.cursor(dictionary=True)
         cursor.execute("SELECT * FROM jobs")
         rows = cursor.fetchall()
 
-    return [_row_to_job(row) for row in rows]
+    return [_row_to_job(row, db.is_postgres) for row in rows]
 
 
 def get_jobs_by_uids(uids: list[str]) -> list[Job]:
@@ -158,15 +124,35 @@ def get_jobs_by_uids(uids: list[str]) -> list[Job]:
     if not uids:
         return []
 
-    placeholders = ",".join("?" * len(uids))
-
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+    with get_connection() as db:
+        cursor = db.cursor(dictionary=True)
+        ph = db.placeholder
+        placeholders = ",".join([ph] * len(uids))
         cursor.execute(f"SELECT * FROM jobs WHERE uid IN ({placeholders})", uids)
         rows = cursor.fetchall()
 
-    return [_row_to_job(row) for row in rows]
+    return [_row_to_job(row, db.is_postgres) for row in rows]
+
+
+def get_job_by_uid(uid: str) -> Job | None:
+    """Retrieve a single job by its UID.
+
+    Args:
+        uid: The job UID to retrieve.
+
+    Returns:
+        Job object if found, None otherwise.
+    """
+    with get_connection() as db:
+        cursor = db.cursor(dictionary=True)
+        ph = db.placeholder
+        cursor.execute(f"SELECT * FROM jobs WHERE uid = {ph}", (uid,))
+        row = cursor.fetchone()
+
+    if row is None:
+        return None
+
+    return _row_to_job(row, db.is_postgres)
 
 
 def get_jobs(
@@ -185,34 +171,35 @@ def get_jobs(
     Returns:
         List of matching Job objects.
     """
-    query = "SELECT * FROM jobs"
-    params: list[str] = []
-    conditions: list[str] = []
+    with get_connection() as db:
+        cursor = db.cursor(dictionary=True)
+        ph = db.placeholder
 
-    if location:
-        conditions.append("location LIKE ?")
-        params.append(f"%{location}%")
+        query = "SELECT * FROM jobs"
+        params: list[str] = []
+        conditions: list[str] = []
 
-    if seniority_level:
-        conditions.append("experience_level = ?")
-        params.append(seniority_level)
+        if location:
+            conditions.append(f"location LIKE {ph}")
+            params.append(f"%{location}%")
 
-    if conditions:
-        query += " WHERE " + " AND ".join(conditions)
+        if seniority_level:
+            conditions.append(f"experience_level = {ph}")
+            params.append(seniority_level)
 
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
         cursor.execute(query, params)
         rows = cursor.fetchall()
 
-    return [_row_to_job(row) for row in rows]
+    return [_row_to_job(row, db.is_postgres) for row in rows]
 
 
 def get_existing_job_uids() -> set[str]:
     """Get all existing job UIDs for idempotency checks."""
-    with sqlite3.connect(DB_PATH) as conn:
-        cursor = conn.cursor()
+    with get_connection() as db:
+        cursor = db.cursor()
         cursor.execute("SELECT uid FROM jobs")
         rows = cursor.fetchall()
 
@@ -221,9 +208,8 @@ def get_existing_job_uids() -> set[str]:
 
 def get_all_companies() -> list[Company]:
     """Retrieve all companies from the database."""
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+    with get_connection() as db:
+        cursor = db.cursor(dictionary=True)
         cursor.execute("SELECT * FROM companies")
         rows = cursor.fetchall()
 
@@ -238,10 +224,25 @@ def get_all_companies() -> list[Company]:
     ]
 
 
-def _row_to_job(row: sqlite3.Row) -> Job:
-    """Convert a database row to a Job object."""
-    details_data = json.loads(row["details"]) if row["details"] else []
-    details = [JobDetail(**d) for d in details_data]
+def _row_to_job(row: Any, is_postgres: bool = False) -> Job:
+    """Convert a database row to a Job object.
+
+    Args:
+        row: Database row (dict-like for both SQLite Row and psycopg2 RealDictRow).
+        is_postgres: Whether the row comes from PostgreSQL (affects JSON handling).
+
+    Returns:
+        Job object populated from the row data.
+    """
+    # Handle details field - JSONB in Postgres is already parsed, TEXT in SQLite needs parsing
+    details_data = row["details"]
+    if details_data is None:
+        details = []
+    elif isinstance(details_data, str):
+        details = [JobDetail(**d) for d in json.loads(details_data)]
+    else:
+        # Already parsed (PostgreSQL JSONB)
+        details = [JobDetail(**d) for d in details_data]
 
     return Job(
         uid=row["uid"],
@@ -256,10 +257,14 @@ def _row_to_job(row: sqlite3.Row) -> Job:
         experience_level=row["experience_level"],
         location=row["location"],
         internal_use_custom_id=row["internal_use_custom_id"],
-        is_consent_needed=bool(row["is_consent_needed"]) if row["is_consent_needed"] is not None else None,
+        is_consent_needed=(
+            bool(row["is_consent_needed"]) if row["is_consent_needed"] is not None else None
+        ),
         referrals_reward=row["referrals_reward"],
         is_reward=bool(row["is_reward"]) if row["is_reward"] is not None else None,
-        is_company_reward=bool(row["is_company_reward"]) if row["is_company_reward"] is not None else None,
+        is_company_reward=(
+            bool(row["is_company_reward"]) if row["is_company_reward"] is not None else None
+        ),
         company_referrals_reward=row["company_referrals_reward"],
         url_detected_page=row["url_detected_page"],
         picture_url=row["picture_url"],
