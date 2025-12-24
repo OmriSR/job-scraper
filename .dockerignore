@@ -1,0 +1,37 @@
+# Data files (stored in cloud databases)
+data/
+*.db
+
+# Python artifacts
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Development files
+.git/
+.gitignore
+.env
+.env.*
+*.md
+!README.md
+
+# IDE
+.vscode/
+.idea/
+
+# Tests (not needed in production)
+tests/
+pytest.ini
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Other
+*.log
+*.tmp
+.DS_Store

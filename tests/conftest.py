@@ -4,23 +4,25 @@ from unittest.mock import patch
 
 import pytest
 
-from matchai.jobs.database import init_database
-
 
 @pytest.fixture
 def temp_db(tmp_path):
     """Create a temporary database for testing.
 
-    Patches DB_PATH and DATA_DIR for the duration of the test.
+    Patches DB_PATH and DATA_DIR at the connection module level.
     """
     db_path = tmp_path / "test.db"
     data_dir = tmp_path
 
+    # Patch at db.connection where they're used at runtime
     with (
-        patch("matchai.jobs.database.DB_PATH", db_path),
-        patch("matchai.jobs.database.DATA_DIR", data_dir),
+        patch("matchai.db.connection.DB_PATH", db_path),
+        patch("matchai.db.connection.DATA_DIR", data_dir),
+        patch("matchai.db.connection.DATABASE_URL", None),  # Force SQLite
     ):
-        init_database()
+        from matchai.db.connection import init_tables
+
+        init_tables()
         yield db_path
 
 
@@ -50,5 +52,3 @@ def temp_db_and_chroma(temp_db, temp_chroma):
     Combines temp_db and temp_chroma fixtures.
     """
     yield {"db_path": temp_db, "chroma_path": temp_chroma}
-
-
