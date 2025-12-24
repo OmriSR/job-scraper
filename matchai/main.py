@@ -3,25 +3,37 @@
 import json
 import sys
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from matchai.config import DB_PATH, DEFAULT_TOP_N
+from matchai.config import DATABASE_URL, DB_PATH, DEFAULT_TOP_N
 from matchai.cv.extractor import extract_text_from_pdf
 from matchai.cv.parser import parse_cv
+from matchai.db.candidates import (
+    compute_cv_hash,
+    get_candidate,
+    get_match_results,
+    save_candidate,
+)
+from matchai.db.connection import init_tables
 from matchai.explainer.generator import (
     find_missing_skills,
     generate_explanation,
     refine_skills_and_tips,
 )
-from matchai.jobs.database import get_all_jobs, get_jobs
+from matchai.jobs.database import (
+    get_all_companies,
+    get_all_jobs,
+    get_jobs,
+    insert_companies,
+)
 from matchai.jobs.ingest import ingest_from_api, load_companies_from_file
 from matchai.matching.filter import apply_filters
 from matchai.matching.ranker import rank_jobs
+from matchai.schemas.job import Company
 from matchai.schemas.match import MatchResult
 from matchai.utils import LLMConfigurationError, check_llm_configured
 
@@ -78,7 +90,7 @@ def ingest(
 @app.command()
 def match(
     cv: Path = typer.Option(..., "--cv", "-c", help="Path to CV PDF file"),
-    location: Optional[str] = typer.Option(
+    location: str | None = typer.Option(
         None, "--location", "-l", help="Filter by job location"
     ),
     top_n: int = typer.Option(
@@ -191,8 +203,9 @@ def info() -> None:
     """Display system information and database stats."""
     console.print("[bold cyan]MatchAI System Information[/bold cyan]\n")
 
-    # Database status
-    if not DB_PATH.exists():
+    # Check database availability
+    is_cloud = DATABASE_URL is not None
+    if not is_cloud and not DB_PATH.exists():
         console.print(
             "[yellow]Database not found. Run 'matchai ingest' first.[/yellow]"
         )
@@ -208,19 +221,212 @@ def info() -> None:
         locations = {job.location for job in all_jobs if job.location}
         location_count = len(locations)
 
+        # Check for stored candidate
+        candidate_info = get_candidate()
+        has_candidate = candidate_info is not None
+
         table = Table(title="Database Statistics")
         table.add_column("Metric", style="cyan")
         table.add_column("Value", style="green")
 
-        table.add_row("Database Path", str(DB_PATH))
+        if is_cloud:
+            table.add_row("Database", "PostgreSQL (cloud)")
+        else:
+            table.add_row("Database", str(DB_PATH))
         table.add_row("Total Jobs", str(job_count))
         table.add_row("Unique Companies", str(company_count))
         table.add_row("Unique Locations", str(location_count))
+        table.add_row("CV Uploaded", "Yes" if has_candidate else "No")
 
         console.print(table)
 
     except Exception as e:
         console.print(f"[red]Error reading database: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command(name="upload-cv")
+def upload_cv(
+    cv: Path = typer.Option(..., "--cv", "-c", help="Path to CV PDF file"),
+) -> None:
+    """Parse CV locally and upload parsed profile to database.
+
+    Run this locally (not in cloud) to set up your CV for scheduled matching.
+    The PDF is parsed on your machine, and only the parsed profile is uploaded.
+    Only one CV is stored at a time - uploading a new one replaces the old.
+    """
+    console.print(f"[bold cyan]Uploading CV: {cv}[/bold cyan]")
+
+    if not cv.exists():
+        console.print(f"[red]Error: CV file not found: {cv}[/red]")
+        raise typer.Exit(1)
+
+    try:
+        check_llm_configured()
+    except LLMConfigurationError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+    try:
+        # Initialize database tables
+        console.print("  Initializing database...")
+        init_tables()
+
+        # Extract and parse CV
+        console.print("  Extracting text from PDF...")
+        cv_text = extract_text_from_pdf(file_path=cv)
+
+        console.print("  Parsing CV with LLM...")
+        candidate = parse_cv(cv_text=cv_text)
+
+        # Compute hash and save
+        cv_hash = compute_cv_hash(cv_text)
+        console.print("  Saving to database...")
+        save_candidate(cv_hash=cv_hash, profile=candidate, raw_text=cv_text)
+
+        console.print("\n[bold green]CV uploaded successfully![/bold green]")
+        console.print(f"  Hash: {cv_hash[:16]}...")
+        console.print(f"  Name: {candidate.name or 'Not detected'}")
+        console.print(f"  Skills: {len(candidate.skills)} detected")
+
+    except Exception as e:
+        console.print(f"[red]Error uploading CV: {e}[/red]")
+        import traceback
+        traceback.print_exc()
+        raise typer.Exit(1)
+
+
+@app.command(name="add-company")
+def add_company(
+    name: str = typer.Option(..., "--name", "-n", help="Company name"),
+    uid: str = typer.Option(..., "--uid", "-u", help="Comeet company UID"),
+    token: str = typer.Option(..., "--token", "-t", help="Comeet API token"),
+) -> None:
+    """Add a company to the database for job fetching.
+
+    Run this locally to register companies for scheduled job fetching.
+    The scheduled cloud job will use these credentials to fetch jobs.
+    """
+    try:
+        # Initialize database tables
+        init_tables()
+
+        company = Company(name=name, uid=uid, token=token, extracted_from="cli")
+        count = insert_companies([company])
+
+        if count > 0:
+            console.print(f"[bold green]Company '{name}' added![/bold green]")
+        else:
+            console.print(f"[yellow]Company '{name}' already exists.[/yellow]")
+
+    except Exception as e:
+        console.print(f"[red]Error adding company: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command(name="import-companies")
+def import_companies(
+    companies_file: Path = typer.Option(
+        ..., "--file", "-f", help="Path to companies JSON file"
+    ),
+) -> None:
+    """Import companies from a JSON file.
+
+    The JSON file should contain an array of company objects:
+    [{"name": "...", "uid": "...", "token": "...", "extracted_from": "..."}]
+
+    This is the bulk alternative to 'add-company' for importing multiple companies.
+    """
+    if not companies_file.exists():
+        console.print(f"[red]Error: File not found: {companies_file}[/red]")
+        raise typer.Exit(1)
+
+    try:
+        # Initialize database tables
+        init_tables()
+
+        # Load companies from file
+        count = load_companies_from_file(file_path=companies_file)
+
+        if count > 0:
+            console.print(
+                f"[bold green]Imported {count} companies from {companies_file}[/bold green]"
+            )
+        else:
+            console.print("[yellow]No new companies imported (all already exist).[/yellow]")
+
+    except Exception as e:
+        console.print(f"[red]Error importing companies: {e}[/red]")
+        import traceback
+        traceback.print_exc()
+        raise typer.Exit(1)
+
+
+@app.command(name="list-companies")
+def list_companies() -> None:
+    """List all companies in the database."""
+    try:
+        companies = get_all_companies()
+
+        if not companies:
+            console.print("[yellow]No companies found.[/yellow]")
+            raise typer.Exit(0)
+
+        table = Table(title="Registered Companies")
+        table.add_column("Name", style="cyan")
+        table.add_column("UID", style="dim")
+        table.add_column("Source", style="green")
+
+        for company in companies:
+            table.add_row(company.name, company.uid, company.extracted_from)
+
+        console.print(table)
+
+    except Exception as e:
+        console.print(f"[red]Error listing companies: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command(name="get-results")
+def get_results(
+    limit: int = typer.Option(10, "--limit", "-n", help="Number of results to show"),
+    output_json: bool = typer.Option(
+        False, "--json", help="Output results as JSON"
+    ),
+) -> None:
+    """Fetch latest match results from the database.
+
+    Shows results from the most recent scheduled matching run.
+    Run this locally after the cloud job has executed.
+    """
+    try:
+        # Check if CV is uploaded
+        candidate_info = get_candidate()
+        if candidate_info is None:
+            console.print(
+                "[yellow]No CV uploaded. Run 'matchai upload-cv' first.[/yellow]"
+            )
+            raise typer.Exit(0)
+
+        cv_hash, _ = candidate_info
+        results = get_match_results(cv_hash=cv_hash, limit=limit)
+
+        if not results:
+            console.print(
+                "[yellow]No match results found. "
+                "Wait for the scheduled job to run or run matching manually.[/yellow]"
+            )
+            raise typer.Exit(0)
+
+        if output_json:
+            _output_json(matches=results)
+        else:
+            _output_pretty(matches=results)
+
+    except Exception as e:
+        console.print(f"[red]Error fetching results: {e}[/red]")
+        import traceback
+        traceback.print_exc()
         raise typer.Exit(1)
 
 
@@ -263,14 +469,14 @@ def _output_pretty(matches: list[MatchResult]) -> None:
 
         # Missing skills
         if match.missing_skills:
-            content.append(f"\n[cyan]Skills to develop:[/cyan]")
+            content.append("\n[cyan]Skills to develop:[/cyan]")
             content.append(f"  {', '.join(match.missing_skills[:7])}")
             if len(match.missing_skills) > 7:
                 content.append(f"  ... and {len(match.missing_skills) - 7} more")
 
         # Interview tips
         if match.interview_tips:
-            content.append(f"\n[yellow]Prepare for interview:[/yellow]")
+            content.append("\n[yellow]Prepare for interview:[/yellow]")
             for tip in match.interview_tips:
                 content.append(f"  • {tip}")
 
