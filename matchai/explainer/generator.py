@@ -67,6 +67,8 @@ TASKS:
    - Focus on the gap between candidate profile and job requirements
    - Be specific and practical
 
+IMPORTANT: Output ONLY valid JSON, no additional text or explanation.
+
 {format_instructions}\
 """
 
