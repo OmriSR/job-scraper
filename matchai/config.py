@@ -5,18 +5,29 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Paths
+# Environment detection
+IS_CLOUD = os.getenv("CLOUD_RUN_JOB", "") != "" or os.getenv("DATABASE_URL", "") != ""
+
+# Paths (local development only)
 DATA_DIR = Path("data")
 DB_PATH = DATA_DIR / "matchai.db"
 CHROMA_PATH = DATA_DIR / "chroma_db"
+
+# Database (Supabase PostgreSQL)
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+# Pinecone (Vector Store)
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+PINECONE_INDEX = "job-embeddings"
+PINECONE_DIMENSION = 384
 
 # LLM settings (Groq)
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_MODEL = "llama-3.3-70b-versatile"
 LLM_TEMPERATURE = 0.0
 
-# Embedding model
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+# Embedding model (fastembed uses ONNX Runtime)
+EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 # spaCy model
 SPACY_MODEL = "en_core_web_sm"
