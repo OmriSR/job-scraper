@@ -11,6 +11,7 @@ MatchAI uses Groq's fast LLM API, semantic search, and deterministic filters to 
 - **Smart Matching**: Combines semantic similarity with deterministic filters (skills, seniority, location)
 - **Explainable**: Generates human-readable explanations for each match
 - **Interview Tips**: LLM-generated preparation suggestions based on skill gaps
+- **Email Notifications**: Sends match results via email after each scheduled run
 - **Cloud-Native**: Runs as scheduled Cloud Run Job with Supabase and Pinecone
 - **Local Development**: SQLite + ChromaDB fallback for local testing
 
@@ -38,17 +39,19 @@ Job API → SQLite Storage → Preprocessing → ChromaDB Embeddings
 │  │ (8 AM, 8 PM)   │       │  • Fetch jobs from Comeet API   │   │
 │  └────────────────┘       │  • Match against stored CV      │   │
 │                           │  • Store results in Supabase    │   │
-│  ┌────────────────┐       └────────────────┬────────────────┘   │
-│  │ Secret Manager │──────▶ API Keys        │                    │
+│  ┌────────────────┐       │  • Send email notifications     │   │
+│  │ Secret Manager │──────▶└────────────────┬────────────────┘   │
+│  │ • API Keys     │                        │                    │
+│  │ • Email creds  │                        │                    │
 │  └────────────────┘                        │                    │
 └────────────────────────────────────────────┼────────────────────┘
-                    ┌────────────────────────┴────────────────────┐
-                    ▼                                              ▼
-           ┌─────────────────┐                        ┌─────────────────┐
-           │    Supabase     │                        │    Pinecone     │
-           │   (Postgres)    │                        │   (Vectors)     │
-           │ • jobs          │                        │ • job_embeddings│
-           │ • candidates    │                        └─────────────────┘
+                    ┌────────────────────────┼────────────────────┐
+                    ▼                        ▼                    ▼
+           ┌─────────────────┐    ┌─────────────────┐    ┌───────────────┐
+           │    Supabase     │    │    Pinecone     │    │  Gmail SMTP   │
+           │   (Postgres)    │    │   (Vectors)     │    │ (Notifications)│
+           │ • jobs          │    │ • job_embeddings│    └───────────────┘
+           │ • candidates    │    └─────────────────┘
            │ • match_results │
            └─────────────────┘
 ```
@@ -62,6 +65,7 @@ Job API → SQLite Storage → Preprocessing → ChromaDB Embeddings
 | Embeddings | fastembed (ONNX) | fastembed (ONNX) |
 | LLM | Groq API | Groq API |
 | NLP | spaCy | spaCy |
+| Notifications | - | Gmail SMTP |
 | Execution | CLI | Cloud Run Job |
 
 ## Installation
@@ -188,7 +192,14 @@ GROQ_API_KEY=your-groq-key
 # Cloud mode (optional for local)
 DATABASE_URL=postgresql://...
 PINECONE_API_KEY=your-pinecone-key
+
+# Email notifications (optional, cloud mode)
+EMAIL_SENDER=your-gmail@gmail.com
+EMAIL_RECIPIENT=recipient@example.com
+EMAIL_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx  # Gmail App Password
 ```
+
+> **Note**: For Gmail, you need to create an [App Password](https://support.google.com/accounts/answer/185833) (requires 2FA enabled).
 
 ### Application Settings
 
@@ -222,7 +233,10 @@ matchai/
 ├── embeddings/          # Embedding clients (fastembed, Pinecone)
 ├── matching/            # Matching pipeline (filters, ranking)
 ├── explainer/           # LLM explanation generation
-├── services/            # Service layer (ingest, match)
+├── services/            # Service layer (ingest, match, email)
+│   ├── ingest_service.py
+│   ├── match_service.py
+│   └── email_service.py # Email notifications
 └── utils.py             # Utility functions
 ```
 
@@ -255,6 +269,12 @@ matchai/
 - LLM generates match explanations
 - Identifies missing skills
 - Generates interview preparation tips
+
+### 6. Email Notifications (Cloud Mode)
+- After matching completes, sends email with top matches
+- Includes job title, company, score, and match explanation
+- Configurable via `EMAIL_SENDER`, `EMAIL_RECIPIENT`, `EMAIL_APP_PASSWORD`
+- Gracefully skips if email is not configured
 
 ## Development
 
@@ -292,6 +312,11 @@ python -m spacy download en_core_web_sm
 
 ### Cloud: "Connection refused to database"
 Check your `DATABASE_URL` environment variable points to Supabase.
+
+### Cloud: "Email notification failed"
+1. Ensure all email env vars are set: `EMAIL_SENDER`, `EMAIL_RECIPIENT`, `EMAIL_APP_PASSWORD`
+2. Use a Gmail [App Password](https://support.google.com/accounts/answer/185833), not your regular password
+3. Email is optional - the job will complete successfully even if email fails
 
 ## Limitations
 
