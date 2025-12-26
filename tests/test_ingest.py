@@ -5,10 +5,15 @@ from unittest.mock import patch
 
 import requests
 
-from matchai.jobs.database import get_all_companies, get_all_jobs, insert_companies
+from matchai.jobs.database import (
+    get_all_companies,
+    get_all_jobs,
+    insert_companies,
+    insert_jobs_to_db,
+)
 from matchai.jobs.embeddings import get_existing_embedding_uids
 from matchai.jobs.ingest import fetch_positions, ingest_from_api, load_companies_from_file
-from matchai.schemas.job import Company
+from matchai.schemas.job import Company, Job
 
 SAMPLE_COMPANIES = [
     {
@@ -160,3 +165,36 @@ class TestIngestFromApi:
             assert stats["jobs_fetched"] == len(SAMPLE_COMPANIES)
             assert stats["jobs_inserted"] == len(SAMPLE_COMPANIES)
             assert temp_db_and_chroma["db_path"].exists()
+
+    def test_embeds_existing_jobs_missing_embeddings(self, temp_db_and_chroma):
+        """Jobs in DB without embeddings should be embedded on next ingestion."""
+        # Insert a company
+        company = Company(**SAMPLE_COMPANIES[0])
+        insert_companies([company])
+
+        # Insert jobs directly into DB WITHOUT embedding them
+        jobs = [
+            Job(uid="existing-job-1", name="Existing Dev 1", details=[]),
+            Job(uid="existing-job-2", name="Existing Dev 2", details=[]),
+        ]
+        insert_jobs_to_db(jobs)
+
+        # Verify jobs are in DB but NOT embedded
+        all_jobs = get_all_jobs()
+        assert len(all_jobs) == 2
+        embedding_uids = get_existing_embedding_uids()
+        assert len(embedding_uids) == 0
+
+        # Run ingestion (API returns no new jobs)
+        with patch("matchai.jobs.ingest.fetch_positions") as mock_fetch:
+            mock_fetch.return_value = []
+
+            stats = ingest_from_api()
+
+            # Should have embedded the 2 existing jobs that were missing embeddings
+            assert stats["jobs_inserted"] == 0
+            assert stats["jobs_embedded"] == 2
+
+        # Verify jobs are now embedded
+        embedding_uids = get_existing_embedding_uids()
+        assert embedding_uids == {"existing-job-1", "existing-job-2"}

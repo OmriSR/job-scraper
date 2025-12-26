@@ -7,6 +7,7 @@ import requests
 from matchai.jobs.database import (
     get_all_companies,
     get_existing_job_uids,
+    get_jobs_by_uids,
     init_database,
     insert_companies,
     insert_jobs_to_db,
@@ -98,7 +99,8 @@ def ingest_from_api() -> dict:
     Uses company credentials stored in the database to fetch jobs
     from the Comeet API, then stores them in SQLite and ChromaDB.
 
-    Idempotent: skips jobs that already exist.
+    Idempotent: skips jobs that already exist in both DB and vector store.
+    Jobs in DB but not in vector store will be embedded.
 
     Returns:
         Dict with ingestion statistics.
@@ -139,15 +141,25 @@ def ingest_from_api() -> dict:
                 all_new_jobs.append(job)
 
     if all_new_jobs:
-        # Insert into SQLite
+        # Insert into database
         inserted = insert_jobs_to_db(all_new_jobs)
         stats["jobs_inserted"] = inserted
 
-        # Embed and store in ChromaDB
+        # Embed new jobs
         jobs_to_embed = [job for job in all_new_jobs if job.uid not in existing_embedding_uids]
         if jobs_to_embed:
             embedded = embed_and_store_jobs(jobs_to_embed)
             stats["jobs_embedded"] = embedded
+
+    # Also embed existing jobs that are missing embeddings (e.g., from failed previous runs)
+    missing_embedding_uids = existing_db_uids - existing_embedding_uids
+    if missing_embedding_uids:
+        logger.info(f"Found {len(missing_embedding_uids)} existing jobs missing embeddings")
+        missing_jobs = get_jobs_by_uids(list(missing_embedding_uids))
+        if missing_jobs:
+            embedded = embed_and_store_jobs(missing_jobs)
+            stats["jobs_embedded"] += embedded
+            logger.info(f"Embedded {embedded} previously missing jobs")
 
     logger.info(
         f"Ingestion complete: {stats['jobs_inserted']} jobs inserted, "
