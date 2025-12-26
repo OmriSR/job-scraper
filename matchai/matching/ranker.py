@@ -31,6 +31,24 @@ def compute_similarities_batch(
     return np.clip(similarities, 0.0, 1.0)
 
 
+def get_apply_url(job: Job) -> str | None:
+    """Get the best available apply URL from a job.
+
+    Args:
+        job: Job object with various URL fields.
+
+    Returns:
+        Best available URL or None if no URL is available.
+    """
+    return (
+        job.url_active_page
+        or job.position_url
+        or job.url_comeet_hosted_page
+        or job.url_recruit_hosted_page
+        or None
+    )
+
+
 def compute_final_score(filter_score: float, similarity_score: float) -> float:
     """Compute weighted final score from filter and similarity scores.
 
@@ -97,6 +115,7 @@ def rank_jobs(
             final_score=final_score,
             explanation=[],
             missing_skills=[],
+            apply_url=get_apply_url(job),
         )
         results.append(result)
 

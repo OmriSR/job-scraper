@@ -153,8 +153,22 @@ def _init_postgres_tables(db: DatabaseConnection) -> None:
             workplace_type TEXT,
             position_url TEXT,
             details JSONB,
-            created_at TIMESTAMPTZ DEFAULT NOW()
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            embedded_at TIMESTAMPTZ
         )
+    """)
+
+    # Add embedded_at column if it doesn't exist (migration for existing tables)
+    cursor.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'jobs' AND column_name = 'embedded_at'
+            ) THEN
+                ALTER TABLE jobs ADD COLUMN embedded_at TIMESTAMPTZ;
+            END IF;
+        END $$;
     """)
 
     # Companies table
@@ -234,9 +248,17 @@ def _init_sqlite_tables(db: DatabaseConnection) -> None:
             linkedin_job_posting_id TEXT,
             workplace_type TEXT,
             position_url TEXT,
-            details TEXT
+            details TEXT,
+            embedded_at TEXT
         )
     """)
+
+    # Add embedded_at column if it doesn't exist (migration for existing tables)
+    cursor.execute("""
+        SELECT COUNT(*) FROM pragma_table_info('jobs') WHERE name='embedded_at'
+    """)
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("ALTER TABLE jobs ADD COLUMN embedded_at TEXT")
 
     # Companies table
     cursor.execute("""

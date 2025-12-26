@@ -28,3 +28,7 @@ class MatchResult(BaseModel):
         default_factory=list,
         description="1-2 actionable tips for interview preparation"
     )
+    apply_url: str | None = Field(
+        default=None,
+        description="Best available URL to apply for the position"
+    )

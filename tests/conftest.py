@@ -30,13 +30,17 @@ def temp_db(tmp_path):
 def temp_chroma(tmp_path):
     """Create a temporary ChromaDB for testing.
 
-    Patches CHROMA_PATH, DATA_DIR, and resets module-level clients
+    Patches CHROMA_PATH, DATA_DIR at config level and resets module-level clients
     to force re-initialization with the new path.
     """
     chroma_path = tmp_path / "chroma_db"
     data_dir = tmp_path
 
     with (
+        patch("matchai.config.IS_CLOUD", False),
+        patch("matchai.config.CHROMA_PATH", chroma_path),
+        patch("matchai.config.DATA_DIR", data_dir),
+        patch("matchai.jobs.embeddings.IS_CLOUD", False),
         patch("matchai.jobs.embeddings.CHROMA_PATH", chroma_path),
         patch("matchai.jobs.embeddings.DATA_DIR", data_dir),
         patch("matchai.jobs.embeddings._collection", None),

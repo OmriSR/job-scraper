@@ -23,7 +23,7 @@ RUN pip install --no-cache-dir \
     python-dotenv>=1.0.0 \
     pydantic>=2.0.0 \
     fastembed>=0.3.0 \
-    pinecone-client>=3.0.0 \
+    pinecone>=5.0.0 \
     psycopg2-binary>=2.9.0 \
     spacy>=3.7.0 \
     rapidfuzz>=3.0.0 \

@@ -12,7 +12,7 @@
 set -e
 
 # Configuration - Update these values
-PROJECT_ID="${GCP_PROJECT_ID:-matchai-prod}"
+PROJECT_ID="${GCP_PROJECT_ID:-matchai-482219}"
 REGION="${GCP_REGION:-us-central1}"
 JOB_NAME="matchai-job"
 SCHEDULER_NAME="matchai-scheduler"
@@ -83,7 +83,7 @@ create_secrets() {
     log_info "Setting up secrets in Secret Manager..."
     log_warn "You'll need to manually add secret values via Cloud Console or gcloud CLI"
 
-    local secrets=("groq-api-key" "database-url" "pinecone-api-key")
+    local secrets=("groq-api-key" "database-url" "pinecone-api-key" "email-sender" "email-recipient" "email-app-password")
 
     for secret in "${secrets[@]}"; do
         if gcloud secrets describe "$secret" --project="$PROJECT_ID" &> /dev/null; then
@@ -101,6 +101,9 @@ create_secrets() {
     echo "  gcloud secrets versions add groq-api-key --data-file=- <<< 'your-groq-key'"
     echo "  gcloud secrets versions add database-url --data-file=- <<< 'your-supabase-url'"
     echo "  gcloud secrets versions add pinecone-api-key --data-file=- <<< 'your-pinecone-key'"
+    echo "  gcloud secrets versions add email-sender --data-file=- <<< 'your-gmail@gmail.com'"
+    echo "  gcloud secrets versions add email-recipient --data-file=- <<< 'recipient@example.com'"
+    echo "  gcloud secrets versions add email-app-password --data-file=- <<< 'xxxx-xxxx-xxxx-xxxx'"
 }
 
 # Build and push Docker image
@@ -112,8 +115,8 @@ build_and_push() {
     # Configure Docker for Artifact Registry
     gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
 
-    # Build image
-    docker build -t "$image_uri" .
+    # Build image for linux/amd64 (required by Cloud Run)
+    docker build --platform linux/amd64 -t "$image_uri" .
 
     # Push image
     docker push "$image_uri"
@@ -150,37 +153,55 @@ create_service_account() {
         --condition=None 2>/dev/null || true
 }
 
+# Grant secret access to default compute service account
+grant_secret_access() {
+    log_info "Granting secret access to default compute service account..."
+
+    local project_number=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)")
+    local default_sa="${project_number}-compute@developer.gserviceaccount.com"
+
+    gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+        --member="serviceAccount:$default_sa" \
+        --role="roles/secretmanager.secretAccessor" \
+        --condition=None --quiet 2>/dev/null || true
+
+    log_info "Secret access granted"
+}
+
 # Create Cloud Run Job
 create_job() {
     log_info "Creating Cloud Run Job..."
 
     local image_uri="$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE_NAME:latest"
 
-    gcloud run jobs create "$JOB_NAME" \
-        --image="$image_uri" \
+    local secrets="GROQ_API_KEY=groq-api-key:latest,DATABASE_URL=database-url:latest,PINECONE_API_KEY=pinecone-api-key:latest,EMAIL_SENDER=email-sender:latest,EMAIL_RECIPIENT=email-recipient:latest,EMAIL_APP_PASSWORD=email-app-password:latest"
+
+    # Check if job already exists
+    if gcloud run jobs describe "$JOB_NAME" \
         --region="$REGION" \
-        --project="$PROJECT_ID" \
-        --memory="2Gi" \
-        --cpu="2" \
-        --max-retries="1" \
-        --task-timeout="30m" \
-        --set-secrets="GROQ_API_KEY=groq-api-key:latest" \
-        --set-secrets="DATABASE_URL=database-url:latest" \
-        --set-secrets="PINECONE_API_KEY=pinecone-api-key:latest" \
-        --set-env-vars="CLOUD_RUN_JOB=true" \
-        2>/dev/null || \
-    gcloud run jobs update "$JOB_NAME" \
-        --image="$image_uri" \
-        --region="$REGION" \
-        --project="$PROJECT_ID" \
-        --memory="2Gi" \
-        --cpu="2" \
-        --max-retries="1" \
-        --task-timeout="30m" \
-        --set-secrets="GROQ_API_KEY=groq-api-key:latest" \
-        --set-secrets="DATABASE_URL=database-url:latest" \
-        --set-secrets="PINECONE_API_KEY=pinecone-api-key:latest" \
-        --set-env-vars="CLOUD_RUN_JOB=true"
+        --project="$PROJECT_ID" &> /dev/null; then
+        log_info "Job exists, updating..."
+        gcloud run jobs update "$JOB_NAME" \
+            --image="$image_uri" \
+            --region="$REGION" \
+            --project="$PROJECT_ID" \
+            --memory="2Gi" \
+            --cpu="2" \
+            --max-retries="1" \
+            --task-timeout="30m" \
+            --set-secrets="$secrets"
+    else
+        log_info "Creating new job..."
+        gcloud run jobs create "$JOB_NAME" \
+            --image="$image_uri" \
+            --region="$REGION" \
+            --project="$PROJECT_ID" \
+            --memory="2Gi" \
+            --cpu="2" \
+            --max-retries="1" \
+            --task-timeout="30m" \
+            --set-secrets="$secrets"
+    fi
 
     log_info "Cloud Run Job created/updated"
 }
@@ -240,6 +261,7 @@ deploy() {
     enable_apis
     create_repository
     create_secrets
+    grant_secret_access
     build_and_push
     create_job
     create_service_account

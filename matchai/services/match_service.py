@@ -147,26 +147,27 @@ def match_candidate(
     return top_matches
 
 
-def run_scheduled_matching() -> dict[str, Any]:
+def run_scheduled_matching() -> tuple[dict[str, Any], list[MatchResult]]:
     """Run matching for the stored candidate and save results.
 
     Called by the scheduled runner (Cloud Run Job). Gets the pre-uploaded CV
     from the database, runs matching against all jobs, and saves results.
 
     Returns:
-        Dict with matching statistics.
+        Tuple of (stats dict, list of MatchResult objects).
     """
     stats = {
         "candidate_found": False,
         "matches_generated": 0,
         "results_saved": 0,
     }
+    matches: list[MatchResult] = []
 
     # Get the stored candidate
     result = get_candidate()
     if result is None:
         logger.warning("No candidate found in database. Upload CV first with 'matchai upload-cv'")
-        return stats
+        return stats, matches
 
     cv_hash, candidate = result
     stats["candidate_found"] = True
@@ -183,4 +184,4 @@ def run_scheduled_matching() -> dict[str, Any]:
         logger.info(f"Saved {saved} match results to database")
 
     logger.info(f"Matching complete: {stats}")
-    return stats
+    return stats, matches

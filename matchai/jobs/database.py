@@ -206,6 +206,49 @@ def get_existing_job_uids() -> set[str]:
     return {row[0] for row in rows}
 
 
+def get_embedded_job_uids() -> set[str]:
+    """Get UIDs of jobs that have been successfully embedded to vector store."""
+    with get_connection() as db:
+        cursor = db.cursor()
+        cursor.execute("SELECT uid FROM jobs WHERE embedded_at IS NOT NULL")
+        rows = cursor.fetchall()
+
+    return {row[0] for row in rows}
+
+
+def mark_jobs_as_embedded(uids: list[str]) -> int:
+    """Mark jobs as embedded in the vector store.
+
+    Args:
+        uids: List of job UIDs to mark as embedded.
+
+    Returns:
+        Number of jobs marked.
+    """
+    if not uids:
+        return 0
+
+    with get_connection() as db:
+        cursor = db.cursor()
+        ph = db.placeholder
+
+        if db.is_postgres:
+            placeholders = ",".join([ph] * len(uids))
+            cursor.execute(
+                f"UPDATE jobs SET embedded_at = NOW() WHERE uid IN ({placeholders})",
+                uids,
+            )
+        else:
+            placeholders = ",".join([ph] * len(uids))
+            cursor.execute(
+                f"UPDATE jobs SET embedded_at = datetime('now') WHERE uid IN ({placeholders})",
+                uids,
+            )
+
+        db.commit()
+        return cursor.rowcount
+
+
 def get_all_companies() -> list[Company]:
     """Retrieve all companies from the database."""
     with get_connection() as db:

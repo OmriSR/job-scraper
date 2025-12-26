@@ -581,7 +581,10 @@ class TestCLICommands:
 
     def test_info_command_no_database(self, tmp_path):
         """Test info command when no database exists."""
-        with patch("matchai.main.DB_PATH", tmp_path / "nonexistent.db"):
+        with (
+            patch("matchai.main.DATABASE_URL", None),
+            patch("matchai.main.DB_PATH", tmp_path / "nonexistent.db"),
+        ):
             result = runner.invoke(app, ["info"])
 
             assert "Database not found" in result.stdout or result.exit_code == 0

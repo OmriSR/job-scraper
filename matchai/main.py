@@ -286,12 +286,13 @@ def upload_cv(
 
         console.print("\n[bold green]CV uploaded successfully![/bold green]")
         console.print(f"  Hash: {cv_hash[:16]}...")
-        console.print(f"  Name: {candidate.name or 'Not detected'}")
+        # console.print(f"  Name: {candidate.name or 'Not detected'}")
         console.print(f"  Skills: {len(candidate.skills)} detected")
 
     except Exception as e:
         console.print(f"[red]Error uploading CV: {e}[/red]")
         import traceback
+
         traceback.print_exc()
         raise typer.Exit(1)
 
@@ -353,11 +354,14 @@ def import_companies(
                 f"[bold green]Imported {count} companies from {companies_file}[/bold green]"
             )
         else:
-            console.print("[yellow]No new companies imported (all already exist).[/yellow]")
+            console.print(
+                "[yellow]No new companies imported (all already exist).[/yellow]"
+            )
 
     except Exception as e:
         console.print(f"[red]Error importing companies: {e}[/red]")
         import traceback
+
         traceback.print_exc()
         raise typer.Exit(1)
 
@@ -390,9 +394,7 @@ def list_companies() -> None:
 @app.command(name="get-results")
 def get_results(
     limit: int = typer.Option(10, "--limit", "-n", help="Number of results to show"),
-    output_json: bool = typer.Option(
-        False, "--json", help="Output results as JSON"
-    ),
+    output_json: bool = typer.Option(False, "--json", help="Output results as JSON"),
 ) -> None:
     """Fetch latest match results from the database.
 
@@ -426,6 +428,7 @@ def get_results(
     except Exception as e:
         console.print(f"[red]Error fetching results: {e}[/red]")
         import traceback
+
         traceback.print_exc()
         raise typer.Exit(1)
 
@@ -481,14 +484,8 @@ def _output_pretty(matches: list[MatchResult]) -> None:
                 content.append(f"  • {tip}")
 
         # Job link
-        job_url = (
-            job.url_active_page
-            or job.position_url
-            or job.url_comeet_hosted_page
-            or job.url_recruit_hosted_page
-        )
-        if job_url:
-            content.append(f"\n[cyan]Apply:[/cyan] {job_url}")
+        if match.apply_url:
+            content.append(f"\n[cyan]Apply:[/cyan] {match.apply_url}")
 
         panel = Panel(
             renderable="\n".join(content),

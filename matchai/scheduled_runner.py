@@ -49,11 +49,24 @@ def main() -> int:
         from matchai.services.match_service import run_scheduled_matching
 
         logger.info("Step 2/3: Running matching for stored CV")
-        match_stats = run_scheduled_matching()
+        match_stats, matches = run_scheduled_matching()
         logger.info(f"Matching complete: {match_stats}")
 
         # Step 3: Results are saved to database by run_scheduled_matching()
         logger.info("Step 3/3: Results saved to match_results table")
+
+        # Step 4: Send email notification
+        from matchai.services.email_service import send_match_results_email
+
+        if matches:
+            logger.info("Sending email notification...")
+            email_sent = send_match_results_email(matches)
+            if email_sent:
+                logger.info(f"Email sent with {len(matches)} matches")
+            else:
+                logger.warning("Email notification failed or disabled")
+        else:
+            logger.info("No matches to send via email")
 
         elapsed = time.time() - start_time
         logger.info(f"Scheduled runner completed successfully in {elapsed:.2f}s")
