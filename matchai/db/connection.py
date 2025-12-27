@@ -205,14 +205,34 @@ def _init_postgres_tables(db: DatabaseConnection) -> None:
             explanation JSONB,
             missing_skills TEXT[],
             interview_tips TEXT[],
+            view_count INTEGER DEFAULT 1,
             created_at TIMESTAMPTZ DEFAULT NOW()
         )
+    """)
+
+    # Add view_count column if it doesn't exist (migration for existing tables)
+    cursor.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'match_results' AND column_name = 'view_count'
+            ) THEN
+                ALTER TABLE match_results ADD COLUMN view_count INTEGER DEFAULT 1;
+            END IF;
+        END $$;
     """)
 
     # Index for faster match result lookups
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_match_results_cv_hash
         ON match_results(cv_hash)
+    """)
+
+    # Unique constraint for upsert operations (one result per cv_hash + job_uid)
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_match_results_unique
+        ON match_results(cv_hash, job_uid)
     """)
 
 
@@ -293,6 +313,20 @@ def _init_sqlite_tables(db: DatabaseConnection) -> None:
             explanation TEXT,
             missing_skills TEXT,
             interview_tips TEXT,
+            view_count INTEGER DEFAULT 1,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
+    """)
+
+    # Add view_count column if it doesn't exist (migration for existing tables)
+    cursor.execute("""
+        SELECT COUNT(*) FROM pragma_table_info('match_results') WHERE name='view_count'
+    """)
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("ALTER TABLE match_results ADD COLUMN view_count INTEGER DEFAULT 1")
+
+    # Unique constraint for upsert operations (one result per cv_hash + job_uid)
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_match_results_unique
+        ON match_results(cv_hash, job_uid)
     """)

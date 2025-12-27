@@ -121,6 +121,198 @@ def get_candidate() -> tuple[str, CandidateProfile] | None:
     return (row["cv_hash"], CandidateProfile(**profile_data))
 
 
+def get_all_cached_job_uids(cv_hash: str) -> set[str]:
+    """Get ALL job UIDs that have cached results (regardless of view_count).
+
+    Used to determine which jobs need computation vs already computed.
+
+    Args:
+        cv_hash: SHA256 hash of the candidate's CV.
+
+    Returns:
+        Set of all job UIDs with cached match results.
+    """
+    with get_connection() as db:
+        cursor = db.cursor(dictionary=True)
+        ph = db.placeholder
+        cursor.execute(
+            f"SELECT job_uid FROM match_results WHERE cv_hash = {ph}",
+            (cv_hash,),
+        )
+        rows = cursor.fetchall()
+
+    return {row["job_uid"] for row in rows}
+
+
+def get_eligible_cached_results(
+    cv_hash: str, max_views: int
+) -> dict[str, dict]:
+    """Get cached match results eligible for display (view_count < max_views).
+
+    Returns results that haven't exceeded the view limit and can still be shown.
+    Jobs with view_count >= max_views are excluded.
+
+    Args:
+        cv_hash: SHA256 hash of the candidate's CV.
+        max_views: Maximum view count threshold (0 = no limit, return all).
+
+    Returns:
+        Dict mapping job_uid to cached result data:
+        {job_uid: {filter_score, similarity_score, final_score,
+                   explanation, missing_skills, interview_tips, view_count}}
+    """
+    with get_connection() as db:
+        cursor = db.cursor(dictionary=True)
+        ph = db.placeholder
+
+        if max_views <= 0:
+            # No view limit - return all cached results
+            cursor.execute(
+                f"""
+                SELECT job_uid, filter_score, similarity_score, final_score,
+                       explanation, missing_skills, interview_tips, view_count
+                FROM match_results
+                WHERE cv_hash = {ph}
+                """,
+                (cv_hash,),
+            )
+        else:
+            cursor.execute(
+                f"""
+                SELECT job_uid, filter_score, similarity_score, final_score,
+                       explanation, missing_skills, interview_tips, view_count
+                FROM match_results
+                WHERE cv_hash = {ph} AND view_count < {ph}
+                """,
+                (cv_hash, max_views),
+            )
+
+        rows = cursor.fetchall()
+
+    results = {}
+    for row in rows:
+        # Parse JSON fields
+        explanation = row["explanation"]
+        if isinstance(explanation, str):
+            explanation = json.loads(explanation)
+
+        missing_skills = row["missing_skills"]
+        if isinstance(missing_skills, str):
+            missing_skills = json.loads(missing_skills)
+        elif missing_skills is None:
+            missing_skills = []
+
+        interview_tips = row["interview_tips"]
+        if isinstance(interview_tips, str):
+            interview_tips = json.loads(interview_tips)
+        elif interview_tips is None:
+            interview_tips = []
+
+        results[row["job_uid"]] = {
+            "filter_score": row["filter_score"],
+            "similarity_score": row["similarity_score"],
+            "final_score": row["final_score"],
+            "explanation": explanation,
+            "missing_skills": missing_skills,
+            "interview_tips": interview_tips,
+            "view_count": row["view_count"] or 1,
+        }
+
+    return results
+
+
+def upsert_match_results(cv_hash: str, results: list[MatchResult]) -> int:
+    """Insert new results or increment view_count for existing.
+
+    Uses upsert pattern: INSERT for new jobs, UPDATE view_count for existing.
+
+    Args:
+        cv_hash: SHA256 hash of the candidate's CV.
+        results: List of match results to upsert.
+
+    Returns:
+        Number of results processed.
+    """
+    with get_connection() as db:
+        cursor = db.cursor()
+        ph = db.placeholder
+        processed = 0
+
+        for result in results:
+            explanation_json = json.dumps(result.explanation)
+
+            if db.is_postgres:
+                # PostgreSQL: Use ON CONFLICT for upsert
+                cursor.execute(
+                    f"""
+                    INSERT INTO match_results (
+                        cv_hash, job_uid, similarity_score, filter_score, final_score,
+                        explanation, missing_skills, interview_tips, view_count
+                    ) VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, 1)
+                    ON CONFLICT (cv_hash, job_uid)
+                    DO UPDATE SET view_count = match_results.view_count + 1
+                    """,
+                    (
+                        cv_hash,
+                        result.job.uid,
+                        result.similarity_score,
+                        result.filter_score,
+                        result.final_score,
+                        explanation_json,
+                        result.missing_skills,
+                        result.interview_tips,
+                    ),
+                )
+            else:
+                # SQLite: Use INSERT OR REPLACE with manual view_count handling
+                # First try to get existing view_count
+                cursor.execute(
+                    f"""
+                    SELECT view_count FROM match_results
+                    WHERE cv_hash = {ph} AND job_uid = {ph}
+                    """,
+                    (cv_hash, result.job.uid),
+                )
+                existing = cursor.fetchone()
+
+                if existing:
+                    # Update existing: increment view_count
+                    new_view_count = (existing[0] or 1) + 1
+                    cursor.execute(
+                        f"""
+                        UPDATE match_results
+                        SET view_count = {ph}
+                        WHERE cv_hash = {ph} AND job_uid = {ph}
+                        """,
+                        (new_view_count, cv_hash, result.job.uid),
+                    )
+                else:
+                    # Insert new result
+                    cursor.execute(
+                        f"""
+                        INSERT INTO match_results (
+                            cv_hash, job_uid, similarity_score, filter_score, final_score,
+                            explanation, missing_skills, interview_tips, view_count
+                        ) VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, 1)
+                        """,
+                        (
+                            cv_hash,
+                            result.job.uid,
+                            result.similarity_score,
+                            result.filter_score,
+                            result.final_score,
+                            explanation_json,
+                            json.dumps(result.missing_skills),
+                            json.dumps(result.interview_tips),
+                        ),
+                    )
+            processed += 1
+
+        db.commit()
+
+    return processed
+
+
 def save_match_results(cv_hash: str, results: list[MatchResult]) -> int:
     """Save match results to the database.
 

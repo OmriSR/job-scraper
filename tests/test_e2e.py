@@ -643,7 +643,10 @@ class TestCLICommands:
         """Test match command when database doesn't exist."""
         cv_path = create_sample_cv_pdf(tmp_path)
 
-        with patch("matchai.main.DB_PATH", tmp_path / "nonexistent.db"):
+        with (
+            patch("matchai.main.DB_PATH", tmp_path / "nonexistent.db"),
+            patch("matchai.main.DATABASE_URL", None),  # Force SQLite mode
+        ):
             result = runner.invoke(app, ["match", "--cv", str(cv_path)])
 
             assert result.exit_code == 1

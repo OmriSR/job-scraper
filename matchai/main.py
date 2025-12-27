@@ -17,25 +17,17 @@ from matchai.db.candidates import (
     get_candidate,
     get_match_results,
     save_candidate,
-    save_match_results,
 )
 from matchai.db.connection import init_tables
-from matchai.explainer.generator import (
-    find_missing_skills,
-    generate_explanation,
-    refine_skills_and_tips,
-)
 from matchai.jobs.database import (
     get_all_companies,
     get_all_jobs,
-    get_jobs,
     insert_companies,
 )
 from matchai.jobs.ingest import ingest_from_api, load_companies_from_file
-from matchai.matching.filter import apply_filters
-from matchai.matching.ranker import rank_jobs
 from matchai.schemas.job import Company
 from matchai.schemas.match import MatchResult
+from matchai.services.match_service import get_or_parse_candidate, match_candidate
 from matchai.utils import LLMConfigurationError, check_llm_configured
 
 app = typer.Typer(help="MatchAI - Local job matching based on CV analysis")
@@ -104,14 +96,19 @@ def match(
         False, "--show-all", help="Show all matches including previously seen jobs"
     ),
 ) -> None:
-    """Match CV against jobs and display top matches."""
+    """Match CV against jobs and display top matches.
+
+    Uses caching: job scores and explanations are computed once and reused.
+    Jobs shown 3+ times are hidden unless --show-all is used.
+    """
     console.print(f"[bold cyan]Processing CV: {cv}[/bold cyan]")
 
     if not cv.exists():
         console.print(f"[red]Error: CV file not found: {cv}[/red]")
         raise typer.Exit(1)
 
-    if not DB_PATH.exists():
+    is_cloud = DATABASE_URL is not None
+    if not is_cloud and not DB_PATH.exists():
         console.print(
             "[red]Error: Database not found. Run 'matchai ingest' first.[/red]"
         )
@@ -125,37 +122,33 @@ def match(
         raise typer.Exit(1)
 
     try:
-        # Extract and parse CV
+        # Extract text from PDF
         console.print("  Extracting text from PDF...")
         cv_text = extract_text_from_pdf(file_path=cv)
 
-        console.print("  Parsing CV with LLM...")
-        candidate = parse_cv(cv_text=cv_text)
+        # Parse CV (uses caching - won't re-parse if already in DB)
+        console.print("  Parsing CV...")
+        candidate, was_cached = get_or_parse_candidate(cv_text)
+        if was_cached:
+            console.print("  [dim](Using cached CV profile)[/dim]")
 
-        # Compute cv_hash for view count filtering
+        # Compute cv_hash for caching
         cv_hash = compute_cv_hash(cv_text)
 
-        # Load jobs with database-level filtering
-        console.print("  Loading jobs from database...")
-        jobs_from_db = get_jobs(location=location)
-
-        if not jobs_from_db:
-            console.print(
-                "[yellow]No jobs found matching your location filter.[/yellow]"
-            )
-            raise typer.Exit(0)
-
-        # Apply filters (view count filter runs first if cv_hash provided)
-        console.print("  Applying filters...")
-        filtered_jobs = apply_filters(
-            jobs=jobs_from_db,
+        # Run matching with caching
+        # - Only computes scores for truly new jobs
+        # - Reuses cached results for previously computed jobs
+        # - Automatically updates view counts
+        console.print("  Running match pipeline...")
+        top_matches = match_candidate(
             candidate=candidate,
-            location=None,  # location already filtered at DB
+            location=location,
+            top_n=top_n,
             cv_hash=cv_hash,
             max_views=0 if show_all else None,  # 0 disables view count filter
         )
 
-        if not filtered_jobs:
+        if not top_matches:
             if show_all:
                 console.print(
                     "[yellow]No jobs match your skills/seniority after filtering.[/yellow]"
@@ -168,41 +161,6 @@ def match(
                     "[dim]Use --show-all to see all matches including previously seen jobs.[/dim]"
                 )
             raise typer.Exit(0)
-
-        # Rank jobs
-        console.print("  Ranking jobs by similarity...")
-        ranked_results = rank_jobs(filtered_jobs=filtered_jobs, candidate=candidate)
-
-        # Get top N
-        top_matches = ranked_results[:top_n]
-
-        # Generate explanations
-        console.print("  Generating match explanations...")
-        for match in top_matches:
-            match.explanation = generate_explanation(
-                job=match.job,
-                candidate=candidate,
-                similarity_score=match.similarity_score,
-                filter_score=match.filter_score,
-            )
-            match.missing_skills = find_missing_skills(
-                job=match.job, candidate=candidate
-            )
-
-        # Refine missing skills and generate interview tips using LLM
-        console.print("  Refining skills and generating interview tips...")
-        for match in top_matches:
-            if match.missing_skills:
-                refined_skills, interview_tips = refine_skills_and_tips(
-                    candidate=candidate,
-                    job=match.job,
-                    raw_missing_skills=match.missing_skills,
-                )
-                match.missing_skills = refined_skills
-                match.interview_tips = interview_tips
-
-        # Save match results to track view counts
-        save_match_results(cv_hash=cv_hash, results=top_matches)
 
         # Output results
         if output_json:
