@@ -220,7 +220,7 @@ create_scheduler() {
         gcloud scheduler jobs update http "$SCHEDULER_NAME" \
             --location="$REGION" \
             --project="$PROJECT_ID" \
-            --schedule="0 8,20 * * *" \
+            --schedule="0 6,18 * * *" \
             --uri="$job_uri" \
             --http-method="POST" \
             --oauth-service-account-email="$sa_email"
@@ -228,7 +228,7 @@ create_scheduler() {
         gcloud scheduler jobs create http "$SCHEDULER_NAME" \
             --location="$REGION" \
             --project="$PROJECT_ID" \
-            --schedule="0 8,20 * * *" \
+            --schedule="0 6,18 * * *" \
             --uri="$job_uri" \
             --http-method="POST" \
             --oauth-service-account-email="$sa_email"
