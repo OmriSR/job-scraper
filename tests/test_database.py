@@ -1,6 +1,7 @@
 """Tests for SQLite database operations."""
 
 from matchai.jobs.database import (
+    delete_jobs_by_uids,
     get_all_jobs,
     get_existing_job_uids,
     get_jobs_by_uids,
@@ -99,3 +100,35 @@ class TestGetExistingJobUids:
     def test_empty_database(self, temp_db):
         uids = get_existing_job_uids()
         assert uids == set()
+
+
+class TestDeleteJobsByUids:
+    def test_deletes_existing_jobs(self, temp_db):
+        jobs = [
+            Job(uid="del-1", name="Job 1"),
+            Job(uid="del-2", name="Job 2"),
+            Job(uid="keep-1", name="Job 3"),
+        ]
+        insert_jobs_to_db(jobs)
+
+        deleted = delete_jobs_by_uids(["del-1", "del-2"])
+        assert deleted == 2
+
+        remaining = get_existing_job_uids()
+        assert remaining == {"keep-1"}
+
+    def test_empty_list_returns_zero(self, temp_db):
+        deleted = delete_jobs_by_uids([])
+        assert deleted == 0
+
+    def test_nonexistent_uids_returns_zero(self, temp_db):
+        deleted = delete_jobs_by_uids(["nonexistent-1", "nonexistent-2"])
+        assert deleted == 0
+
+    def test_partial_match(self, temp_db):
+        jobs = [Job(uid="exists-1", name="Job 1")]
+        insert_jobs_to_db(jobs)
+
+        deleted = delete_jobs_by_uids(["exists-1", "not-exists-1"])
+        assert deleted == 1
+        assert get_existing_job_uids() == set()

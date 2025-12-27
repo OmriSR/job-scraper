@@ -11,6 +11,7 @@ import numpy as np
 from matchai.config import CHROMA_PATH, DATA_DIR, IS_CLOUD
 from matchai.embeddings import (
     VectorRecord,
+    delete_embeddings,
     embed_text_numpy,
     embed_texts_batch_numpy,
     fetch_embeddings,
@@ -161,6 +162,27 @@ def get_existing_embedding_uids() -> set[str]:
         collection = _get_local_chromadb_collection()
         results = collection.get(include=[])
         return set(results["ids"])
+
+
+def delete_job_embeddings(uids: list[str]) -> int:
+    """Delete job embeddings from vector store.
+
+    Args:
+        uids: List of job UIDs whose embeddings should be deleted.
+
+    Returns:
+        Number of embeddings deleted.
+    """
+    if not uids:
+        return 0
+
+    if IS_CLOUD:
+        return delete_embeddings(uids)
+    else:
+        collection = _get_local_chromadb_collection()
+        # ChromaDB delete doesn't return count, but we trust it worked
+        collection.delete(ids=uids)
+        return len(uids)
 
 
 def embed_candidate(profile: CandidateProfile) -> np.ndarray:

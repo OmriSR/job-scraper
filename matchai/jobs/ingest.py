@@ -5,6 +5,7 @@ from pathlib import Path
 import requests
 
 from matchai.jobs.database import (
+    delete_jobs_by_uids,
     get_all_companies,
     get_existing_job_uids,
     get_jobs_by_uids,
@@ -12,7 +13,11 @@ from matchai.jobs.database import (
     insert_companies,
     insert_jobs_to_db,
 )
-from matchai.jobs.embeddings import embed_and_store_jobs, get_existing_embedding_uids
+from matchai.jobs.embeddings import (
+    delete_job_embeddings,
+    embed_and_store_jobs,
+    get_existing_embedding_uids,
+)
 from matchai.schemas.job import Company, Job
 
 logger = logging.getLogger(__name__)
@@ -61,7 +66,7 @@ def load_companies_from_file(file_path: Path) -> int:
     return inserted
 
 
-def fetch_positions(comeet_uid: str, comeet_token: str) -> list[dict]:
+def fetch_positions(comeet_uid: str, comeet_token: str) -> tuple[list[dict], bool]:
     """Fetch open positions from Comeet API.
 
     Args:
@@ -69,7 +74,8 @@ def fetch_positions(comeet_uid: str, comeet_token: str) -> list[dict]:
         comeet_token: API token for authentication.
 
     Returns:
-        List of position dicts from the API.
+        Tuple of (positions, success) where positions is a list of position dicts
+        and success indicates whether the API call succeeded.
     """
     base_url = f"https://www.comeet.co/careers-api/2.0/company/{comeet_uid}/positions"
 
@@ -86,11 +92,11 @@ def fetch_positions(comeet_uid: str, comeet_token: str) -> list[dict]:
 
         positions = response.json()
         logger.info(f"Fetched {len(positions)} positions from Comeet API")
-        return positions
+        return positions, True
 
     except requests.exceptions.RequestException as e:
         logger.error(f"Error fetching positions: {e}")
-        return []
+        return [], False
 
 
 def ingest_from_api() -> dict:
@@ -101,6 +107,7 @@ def ingest_from_api() -> dict:
 
     Idempotent: skips jobs that already exist in both DB and vector store.
     Jobs in DB but not in vector store will be embedded.
+    Jobs no longer returned by the API will be deleted.
 
     Returns:
         Dict with ingestion statistics.
@@ -113,6 +120,7 @@ def ingest_from_api() -> dict:
         "jobs_skipped": 0,
         "jobs_inserted": 0,
         "jobs_embedded": 0,
+        "jobs_deleted": 0,
     }
 
     companies = get_all_companies()
@@ -124,21 +132,41 @@ def ingest_from_api() -> dict:
     existing_embedding_uids = get_existing_embedding_uids()
 
     all_new_jobs = []
+    api_job_uids: set[str] = set()
+    api_fetch_failed = False
 
     for company in companies:
         stats["companies_processed"] += 1
 
-        positions = fetch_positions(company.uid, company.token)
+        positions, success = fetch_positions(company.uid, company.token)
+        if not success:
+            api_fetch_failed = True
+
         stats["jobs_fetched"] += len(positions)
 
         for pos in positions:
             job_uid = pos.get("uid")
+            if job_uid:
+                api_job_uids.add(job_uid)
+
             if job_uid in existing_db_uids:
                 stats["jobs_skipped"] += 1
             else:
                 normalized_pos = _normalize_position(pos)
                 job = Job(**normalized_pos)
                 all_new_jobs.append(job)
+
+    # Delete stale jobs (only if all API calls succeeded)
+    stale_uids = existing_db_uids - api_job_uids
+    if stale_uids and not api_fetch_failed:
+        logger.info(f"Deleting {len(stale_uids)} stale jobs no longer in API")
+        deleted = delete_jobs_by_uids(list(stale_uids))
+        delete_job_embeddings(list(stale_uids))
+        stats["jobs_deleted"] = deleted
+    elif stale_uids and api_fetch_failed:
+        logger.warning(
+            f"Skipping deletion of {len(stale_uids)} stale jobs due to API fetch failure"
+        )
 
     if all_new_jobs:
         # Insert into database
@@ -151,8 +179,9 @@ def ingest_from_api() -> dict:
             embedded = embed_and_store_jobs(jobs_to_embed)
             stats["jobs_embedded"] = embedded
 
-    # Also embed existing jobs that are missing embeddings (e.g., from failed previous runs)
-    missing_embedding_uids = existing_db_uids - existing_embedding_uids
+    # Also embed existing jobs that are missing embeddings 
+    remaining_db_uids = existing_db_uids - stale_uids if not api_fetch_failed else existing_db_uids
+    missing_embedding_uids = remaining_db_uids - existing_embedding_uids
     if missing_embedding_uids:
         logger.info(f"Found {len(missing_embedding_uids)} existing jobs missing embeddings")
         missing_jobs = get_jobs_by_uids(list(missing_embedding_uids))
@@ -162,8 +191,9 @@ def ingest_from_api() -> dict:
             logger.info(f"Embedded {embedded} previously missing jobs")
 
     logger.info(
-        f"Ingestion complete: {stats['jobs_inserted']} jobs inserted, "
-        f"{stats['jobs_embedded']} embedded, {stats['jobs_skipped']} skipped"
+        f"Ingestion complete: {stats['jobs_inserted']} inserted, "
+        f"{stats['jobs_embedded']} embedded, {stats['jobs_skipped']} skipped, "
+        f"{stats['jobs_deleted']} deleted"
     )
 
     return stats

@@ -238,8 +238,9 @@ class TestComeetSandboxIntegration:
     @pytest.mark.integration
     def test_fetch_positions_from_sandbox(self):
         """Test fetching real positions from Comeet sandbox."""
-        positions = fetch_positions(COMEET_SANDBOX["uid"], COMEET_SANDBOX["token"])
+        positions, success = fetch_positions(COMEET_SANDBOX["uid"], COMEET_SANDBOX["token"])
 
+        assert success is True
         assert isinstance(positions, list)
         # Sandbox should have at least some test positions
         assert len(positions) >= 0

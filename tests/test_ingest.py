@@ -80,8 +80,9 @@ class TestFetchPositions:
             mock_get.return_value.json.return_value = SAMPLE_API_RESPONSE
             mock_get.return_value.raise_for_status.return_value = None
 
-            positions = fetch_positions("uid-123", "token-abc")
+            positions, success = fetch_positions("uid-123", "token-abc")
 
+            assert success is True
             assert len(positions) == len(SAMPLE_API_RESPONSE)
             assert positions[0]["uid"] == SAMPLE_API_RESPONSE[0]["uid"]
 
@@ -89,8 +90,9 @@ class TestFetchPositions:
         with patch("matchai.jobs.ingest.requests.get") as mock_get:
             mock_get.side_effect = requests.exceptions.ConnectionError("Connection error")
 
-            positions = fetch_positions("uid-123", "token-abc")
+            positions, success = fetch_positions("uid-123", "token-abc")
 
+            assert success is False
             assert positions == []
 
 
@@ -107,7 +109,7 @@ class TestIngestFromApi:
         insert_companies([company])
 
         with patch("matchai.jobs.ingest.fetch_positions") as mock_fetch:
-            mock_fetch.return_value = SAMPLE_API_RESPONSE
+            mock_fetch.return_value = (SAMPLE_API_RESPONSE, True)
 
             stats = ingest_from_api()
 
@@ -129,7 +131,7 @@ class TestIngestFromApi:
         insert_companies([company])
 
         with patch("matchai.jobs.ingest.fetch_positions") as mock_fetch:
-            mock_fetch.return_value = SAMPLE_API_RESPONSE
+            mock_fetch.return_value = (SAMPLE_API_RESPONSE, True)
 
             # First ingestion
             ingest_from_api()
@@ -156,7 +158,7 @@ class TestIngestFromApi:
         }
 
         def mock_fetch(uid, token):
-            return api_responses.get((uid, token), [])
+            return api_responses.get((uid, token), []), True
 
         with patch("matchai.jobs.ingest.fetch_positions", side_effect=mock_fetch):
             stats = ingest_from_api()
@@ -185,9 +187,12 @@ class TestIngestFromApi:
         embedding_uids = get_existing_embedding_uids()
         assert len(embedding_uids) == 0
 
-        # Run ingestion (API returns no new jobs)
+        # Run ingestion (API returns the same jobs - not stale)
         with patch("matchai.jobs.ingest.fetch_positions") as mock_fetch:
-            mock_fetch.return_value = []
+            mock_fetch.return_value = (
+                [{"uid": "existing-job-1"}, {"uid": "existing-job-2"}],
+                True,
+            )
 
             stats = ingest_from_api()
 
@@ -198,3 +203,75 @@ class TestIngestFromApi:
         # Verify jobs are now embedded
         embedding_uids = get_existing_embedding_uids()
         assert embedding_uids == {"existing-job-1", "existing-job-2"}
+
+    def test_deletes_stale_jobs(self, temp_db_and_chroma):
+        """Jobs no longer in API should be deleted from DB and embeddings."""
+        company = Company(**SAMPLE_COMPANIES[0])
+        insert_companies([company])
+
+        # First ingestion - add jobs
+        with patch("matchai.jobs.ingest.fetch_positions") as mock_fetch:
+            mock_fetch.return_value = (SAMPLE_API_RESPONSE, True)
+            ingest_from_api()
+
+        # Verify jobs exist
+        jobs = get_all_jobs()
+        assert len(jobs) == 2
+        embedding_uids = get_existing_embedding_uids()
+        assert len(embedding_uids) == 2
+
+        # Second ingestion - API returns only one job (one was closed)
+        with patch("matchai.jobs.ingest.fetch_positions") as mock_fetch:
+            mock_fetch.return_value = ([SAMPLE_API_RESPONSE[0]], True)
+            stats = ingest_from_api()
+
+        # Verify stale job was deleted
+        assert stats["jobs_deleted"] == 1
+        jobs = get_all_jobs()
+        assert len(jobs) == 1
+        assert jobs[0].uid == "job-1"
+
+        # Verify embedding was also deleted
+        embedding_uids = get_existing_embedding_uids()
+        assert embedding_uids == {"job-1"}
+
+    def test_no_deletion_when_api_fails(self, temp_db_and_chroma):
+        """Jobs should NOT be deleted if any API call fails."""
+        company = Company(**SAMPLE_COMPANIES[0])
+        insert_companies([company])
+
+        # First ingestion - add jobs
+        with patch("matchai.jobs.ingest.fetch_positions") as mock_fetch:
+            mock_fetch.return_value = (SAMPLE_API_RESPONSE, True)
+            ingest_from_api()
+
+        jobs_before = get_all_jobs()
+        assert len(jobs_before) == 2
+
+        # Second ingestion - API fails (returns empty with failure flag)
+        with patch("matchai.jobs.ingest.fetch_positions") as mock_fetch:
+            mock_fetch.return_value = ([], False)
+            stats = ingest_from_api()
+
+        # Verify no jobs were deleted due to API failure
+        assert stats["jobs_deleted"] == 0
+        jobs_after = get_all_jobs()
+        assert len(jobs_after) == 2
+
+    def test_no_deletion_when_all_jobs_still_open(self, temp_db_and_chroma):
+        """No deletion when all existing jobs are still in API response."""
+        company = Company(**SAMPLE_COMPANIES[0])
+        insert_companies([company])
+
+        with patch("matchai.jobs.ingest.fetch_positions") as mock_fetch:
+            mock_fetch.return_value = (SAMPLE_API_RESPONSE, True)
+
+            # First ingestion
+            ingest_from_api()
+
+            # Second ingestion - same jobs
+            stats = ingest_from_api()
+
+        assert stats["jobs_deleted"] == 0
+        jobs = get_all_jobs()
+        assert len(jobs) == 2
