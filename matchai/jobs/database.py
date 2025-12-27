@@ -206,6 +206,27 @@ def get_existing_job_uids() -> set[str]:
     return {row[0] for row in rows}
 
 
+def delete_jobs_by_uids(uids: list[str]) -> int:
+    """Delete jobs from the database by their UIDs.
+
+    Args:
+        uids: List of job UIDs to delete.
+
+    Returns:
+        Number of jobs deleted.
+    """
+    if not uids:
+        return 0
+
+    with get_connection() as db:
+        cursor = db.cursor()
+        ph = db.placeholder
+        placeholders = ",".join([ph] * len(uids))
+        cursor.execute(f"DELETE FROM jobs WHERE uid IN ({placeholders})", uids)
+        db.commit()
+        return cursor.rowcount
+
+
 def get_embedded_job_uids() -> set[str]:
     """Get UIDs of jobs that have been successfully embedded to vector store."""
     with get_connection() as db:

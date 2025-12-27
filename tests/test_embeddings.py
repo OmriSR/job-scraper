@@ -3,6 +3,7 @@
 import numpy as np
 
 from matchai.jobs.embeddings import (
+    delete_job_embeddings,
     embed_and_store_jobs,
     embed_candidate,
     embed_text,
@@ -96,3 +97,34 @@ class TestEmbedCandidate:
         result = embed_candidate(profile)
         assert isinstance(result, np.ndarray)
         assert result.shape == (384,)
+
+
+class TestDeleteJobEmbeddings:
+    def test_deletes_existing_embeddings(self, temp_chroma):
+        jobs = [
+            Job(uid="del-1", name="Job 1", details=[]),
+            Job(uid="del-2", name="Job 2", details=[]),
+            Job(uid="keep-1", name="Job 3", details=[]),
+        ]
+        embed_and_store_jobs(jobs)
+
+        # Verify all are stored
+        uids = get_existing_embedding_uids()
+        assert uids == {"del-1", "del-2", "keep-1"}
+
+        # Delete some
+        deleted = delete_job_embeddings(["del-1", "del-2"])
+        assert deleted == 2
+
+        # Verify only keep-1 remains
+        remaining = get_existing_embedding_uids()
+        assert remaining == {"keep-1"}
+
+    def test_empty_list_returns_zero(self, temp_chroma):
+        deleted = delete_job_embeddings([])
+        assert deleted == 0
+
+    def test_nonexistent_uids(self, temp_chroma):
+        # ChromaDB doesn't error on missing IDs, just returns count
+        deleted = delete_job_embeddings(["nonexistent-1", "nonexistent-2"])
+        assert deleted == 2  # Returns count passed, not actually deleted
