@@ -17,6 +17,7 @@ from matchai.db.candidates import (
     get_candidate,
     get_match_results,
     save_candidate,
+    save_match_results,
 )
 from matchai.db.connection import init_tables
 from matchai.explainer.generator import (
@@ -99,6 +100,9 @@ def match(
     output_json: bool = typer.Option(
         False, "--json", help="Output results as JSON instead of pretty format"
     ),
+    show_all: bool = typer.Option(
+        False, "--show-all", help="Show all matches including previously seen jobs"
+    ),
 ) -> None:
     """Match CV against jobs and display top matches."""
     console.print(f"[bold cyan]Processing CV: {cv}[/bold cyan]")
@@ -128,6 +132,9 @@ def match(
         console.print("  Parsing CV with LLM...")
         candidate = parse_cv(cv_text=cv_text)
 
+        # Compute cv_hash for view count filtering
+        cv_hash = compute_cv_hash(cv_text)
+
         # Load jobs with database-level filtering
         console.print("  Loading jobs from database...")
         jobs_from_db = get_jobs(location=location)
@@ -138,18 +145,28 @@ def match(
             )
             raise typer.Exit(0)
 
-        # Apply skill and seniority filters (in-memory, more complex logic)
-        console.print("  Applying skill and seniority filters...")
+        # Apply filters (view count filter runs first if cv_hash provided)
+        console.print("  Applying filters...")
         filtered_jobs = apply_filters(
             jobs=jobs_from_db,
             candidate=candidate,
             location=None,  # location already filtered at DB
+            cv_hash=cv_hash,
+            max_views=0 if show_all else None,  # 0 disables view count filter
         )
 
         if not filtered_jobs:
-            console.print(
-                "[yellow]No jobs match your skills/seniority after filtering.[/yellow]"
-            )
+            if show_all:
+                console.print(
+                    "[yellow]No jobs match your skills/seniority after filtering.[/yellow]"
+                )
+            else:
+                console.print(
+                    "[yellow]No new jobs to show. All matching jobs have been seen before.[/yellow]"
+                )
+                console.print(
+                    "[dim]Use --show-all to see all matches including previously seen jobs.[/dim]"
+                )
             raise typer.Exit(0)
 
         # Rank jobs
@@ -183,6 +200,9 @@ def match(
                 )
                 match.missing_skills = refined_skills
                 match.interview_tips = interview_tips
+
+        # Save match results to track view counts
+        save_match_results(cv_hash=cv_hash, results=top_matches)
 
         # Output results
         if output_json:

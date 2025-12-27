@@ -1,6 +1,5 @@
 """Tests for job text preprocessing."""
 
-import pytest
 
 from matchai.jobs.preprocessor import (
     extract_details_text,

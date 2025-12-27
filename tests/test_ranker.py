@@ -1,11 +1,12 @@
 """Tests for semantic job ranking."""
 
-import numpy as np
 from unittest.mock import patch
 
+import numpy as np
+
 from matchai.matching.ranker import (
-    compute_similarities_batch,
     compute_final_score,
+    compute_similarities_batch,
     rank_jobs,
 )
 from tests.test_utils import make_test_candidate, make_test_job
