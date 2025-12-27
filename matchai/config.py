@@ -37,6 +37,7 @@ SIMILARITY_WEIGHT = 0.6
 FILTER_WEIGHT = 1 - SIMILARITY_WEIGHT
 DEFAULT_TOP_N = 5
 SKILL_MATCH_THRESHOLD = 80
+MAX_JOB_VIEWS = 3  # Exclude jobs shown this many times to the same candidate
 
 # Email settings (Gmail SMTP)
 EMAIL_SENDER = os.getenv("EMAIL_SENDER")

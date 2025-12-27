@@ -2,7 +2,8 @@
 
 from rapidfuzz import fuzz
 
-from matchai.config import SKILL_MATCH_THRESHOLD
+from matchai.config import MAX_JOB_VIEWS, SKILL_MATCH_THRESHOLD
+from matchai.db.candidates import get_excluded_job_uids
 from matchai.jobs.preprocessor import extract_details_text
 from matchai.schemas.candidate import CandidateProfile, SeniorityLevel
 from matchai.schemas.job import Job
@@ -93,6 +94,32 @@ def filter_by_seniority(
     return results
 
 
+def filter_by_view_count(
+    jobs: list[Job],
+    cv_hash: str | None,
+    max_views: int = MAX_JOB_VIEWS,
+) -> list[Job]:
+    """Filter out jobs that have been shown too many times to this candidate.
+
+    Args:
+        jobs: List of jobs to filter.
+        cv_hash: Candidate's CV hash (None skips this filter).
+        max_views: Maximum times a job can appear in results (0 disables filter).
+
+    Returns:
+        List of jobs that haven't exceeded the view limit.
+    """
+    if cv_hash is None or max_views <= 0:
+        return jobs
+
+    excluded_uids = get_excluded_job_uids(cv_hash, max_views)
+
+    if not excluded_uids:
+        return jobs
+
+    return [job for job in jobs if job.uid not in excluded_uids]
+
+
 def filter_by_location(
     jobs: list[Job],
     location: str | None,
@@ -131,6 +158,8 @@ def apply_filters(
     candidate: CandidateProfile,
     location: str | None = None,
     skill_threshold: int = SKILL_MATCH_THRESHOLD,
+    cv_hash: str | None = None,
+    max_views: int | None = None,
 ) -> list[tuple[Job, float]]:
     """Apply all filters and return matching jobs with scores.
 
@@ -139,10 +168,18 @@ def apply_filters(
         candidate: Candidate profile.
         location: Optional location filter.
         skill_threshold: Minimum skill match threshold.
+        cv_hash: Candidate's CV hash for view count filtering.
+        max_views: Maximum views before exclusion (None uses default, 0 disables).
 
     Returns:
         List of (job, skill_score) tuples for jobs passing all filters.
     """
+    # Apply view count filter first (most efficient - just UID lookup)
+    if max_views is None:
+        max_views = MAX_JOB_VIEWS
+    jobs = filter_by_view_count(jobs, cv_hash, max_views)
+
+    # Then apply other filters
     jobs = filter_by_location(jobs, location)
     jobs = filter_by_seniority(jobs, candidate)
     results = filter_by_skills(jobs, candidate, skill_threshold)

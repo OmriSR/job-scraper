@@ -179,7 +179,7 @@ def ingest_from_api() -> dict:
             embedded = embed_and_store_jobs(jobs_to_embed)
             stats["jobs_embedded"] = embedded
 
-    # Also embed existing jobs that are missing embeddings 
+    # Also embed existing jobs that are missing embeddings
     remaining_db_uids = existing_db_uids - stale_uids if not api_fetch_failed else existing_db_uids
     missing_embedding_uids = remaining_db_uids - existing_embedding_uids
     if missing_embedding_uids:

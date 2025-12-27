@@ -68,20 +68,25 @@ def match_candidate(
     candidate: CandidateProfile,
     location: str | None = None,
     top_n: int = DEFAULT_TOP_N,
+    cv_hash: str | None = None,
+    max_views: int | None = None,
 ) -> list[MatchResult]:
     """Run full matching pipeline for a candidate.
 
     Pipeline:
     1. Load jobs from database (with optional location filter)
-    2. Apply skill and seniority filters
-    3. Rank by semantic similarity
-    4. Generate explanations for top matches
-    5. Find missing skills and generate interview tips
+    2. Apply view count filter (exclude jobs seen >= max_views times)
+    3. Apply skill and seniority filters
+    4. Rank by semantic similarity
+    5. Generate explanations for top matches
+    6. Find missing skills and generate interview tips
 
     Args:
         candidate: Parsed candidate profile.
         location: Optional location filter.
         top_n: Number of top matches to return.
+        cv_hash: Candidate's CV hash for view count filtering.
+        max_views: Maximum views before exclusion (None uses default, 0 disables).
 
     Returns:
         List of top MatchResult objects with explanations.
@@ -96,12 +101,14 @@ def match_candidate(
 
     logger.info(f"Found {len(jobs)} jobs to match against")
 
-    # Apply filters
-    logger.info("Applying skill and seniority filters...")
+    # Apply filters (view count filter runs first if cv_hash provided)
+    logger.info("Applying filters...")
     filtered_jobs = apply_filters(
         jobs=jobs,
         candidate=candidate,
         location=None,  # Already filtered at DB level
+        cv_hash=cv_hash,
+        max_views=max_views,
     )
 
     if not filtered_jobs:
@@ -173,8 +180,8 @@ def run_scheduled_matching() -> tuple[dict[str, Any], list[MatchResult]]:
     stats["candidate_found"] = True
     logger.info(f"Found stored candidate (hash: {cv_hash[:16]}...)")
 
-    # Run matching
-    matches = match_candidate(candidate)
+    # Run matching (pass cv_hash for view count filtering)
+    matches = match_candidate(candidate, cv_hash=cv_hash)
     stats["matches_generated"] = len(matches)
 
     # Save results

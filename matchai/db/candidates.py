@@ -135,9 +135,6 @@ def save_match_results(cv_hash: str, results: list[MatchResult]) -> int:
         cursor = db.cursor()
         ph = db.placeholder
 
-        # Delete previous results for this CV
-        cursor.execute(f"DELETE FROM match_results WHERE cv_hash = {ph}", (cv_hash,))
-
         saved = 0
         for result in results:
             explanation_json = json.dumps(result.explanation)
@@ -186,6 +183,34 @@ def save_match_results(cv_hash: str, results: list[MatchResult]) -> int:
         db.commit()
 
     return saved
+
+
+def get_excluded_job_uids(cv_hash: str, max_views: int) -> set[str]:
+    """Get job UIDs that have been shown to a candidate too many times.
+
+    Args:
+        cv_hash: SHA256 hash of the candidate's CV.
+        max_views: Maximum number of times a job can be shown.
+
+    Returns:
+        Set of job UIDs to exclude from future matches.
+    """
+    with get_connection() as db:
+        cursor = db.cursor(dictionary=True)
+        ph = db.placeholder
+        cursor.execute(
+            f"""
+            SELECT job_uid
+            FROM match_results
+            WHERE cv_hash = {ph}
+            GROUP BY job_uid
+            HAVING COUNT(*) >= {ph}
+            """,
+            (cv_hash, max_views),
+        )
+        rows = cursor.fetchall()
+
+    return {row["job_uid"] for row in rows}
 
 
 def get_match_results(cv_hash: str | None = None, limit: int = 10) -> list[MatchResult]:

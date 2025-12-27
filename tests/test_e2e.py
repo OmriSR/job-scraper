@@ -19,7 +19,6 @@ import pytest
 from typer.testing import CliRunner
 
 from matchai.cv.extractor import extract_text_from_pdf
-from matchai.cv.parser import parse_cv
 from matchai.explainer.generator import (
     ExplanationOutput,
     find_missing_skills,
@@ -29,7 +28,6 @@ from matchai.jobs.database import (
     get_all_companies,
     get_all_jobs,
     get_jobs,
-    insert_companies,
     insert_jobs_to_db,
 )
 from matchai.jobs.embeddings import (
@@ -43,9 +41,9 @@ from matchai.main import app
 from matchai.matching.filter import apply_filters
 from matchai.matching.ranker import rank_jobs
 from matchai.schemas.candidate import CandidateProfile, SeniorityLevel
-from matchai.schemas.job import Company, Job, JobDetail
+from matchai.schemas.job import Job, JobDetail
 from matchai.utils import LLMConfigurationError
-from tests.test_utils import make_test_candidate, make_test_job
+from tests.test_utils import make_test_job
 
 runner = CliRunner()
 
